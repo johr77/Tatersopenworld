@@ -56,5 +56,5 @@ export type HudSnap = {
   cam: CamMode;
   loading: string | null;
   hint: string;
-  pad: boolean;
+  pad?: boolean;
 };
