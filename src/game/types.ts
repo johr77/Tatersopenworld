@@ -25,6 +25,34 @@ export const DEFAULT_BINDS: Bindings = {
   cam: "KeyC",
 };
 
+/** Standard Gamepad button index. */
+export type PadAction =
+  | "confirm"
+  | "back"
+  | "jump"
+  | "fire"
+  | "sprint"
+  | "menu"
+  | "cam"
+  | "pause"
+  | "cyclePrev"
+  | "cycleNext";
+
+export type PadBindings = Record<PadAction, number>;
+
+export const DEFAULT_PAD_BINDS: PadBindings = {
+  confirm: 0,
+  back: 1,
+  jump: 0,
+  fire: 7,
+  sprint: 6,
+  menu: 3,
+  cam: 2,
+  pause: 8,
+  cyclePrev: 4,
+  cycleNext: 5,
+};
+
 export type PlayerRecord = {
   id: string;
   name: string;

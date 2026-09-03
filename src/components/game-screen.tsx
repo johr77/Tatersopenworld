@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Box, Crosshair, Hammer, LogOut, Pause, Settings2, Swords, Trees } from "lucide-react";
 import { loadBinds } from "@/game/bindings";
+import { usePadNav } from "@/game/use-pad-nav";
 import { OptionsPanel } from "./options-panel";
 import type { GameEngine } from "@/game/engine";
 import type { HudSnap, PlayerRecord } from "@/game/types";
@@ -63,6 +64,16 @@ export function GameScreen({ player, onQuit }: { player: PlayerRecord; onQuit: (
   }, []);
 
   const e = engineRef.current;
+  const pausePad = usePadNav({
+    count: 3,
+    enabled: hud.paused && !opts && !hud.loading,
+    onConfirm: (i) => {
+      if (i === 0) e?.setPaused(false);
+      else if (i === 1) setOpts(true);
+      else onQuit();
+    },
+    onBack: () => e?.setPaused(false),
+  });
 
   return (
     <div className="relative h-dvh w-full overflow-hidden bg-bg">
@@ -157,21 +168,30 @@ export function GameScreen({ player, onQuit }: { player: PlayerRecord; onQuit: (
               <button
                 type="button"
                 onClick={() => e?.setPaused(false)}
-                className="mt-2 rounded-md bg-accent px-4 py-3 font-medium text-accent-fg"
+                className={
+                  "mt-2 rounded-md bg-accent px-4 py-3 font-medium text-accent-fg" +
+                  (pausePad.index === 0 ? " ring-2 ring-fg" : "")
+                }
               >
                 Resume
               </button>
               <button
                 type="button"
                 onClick={() => setOpts(true)}
-                className="inline-flex items-center justify-center gap-2 rounded-md px-4 py-3 ring-1 ring-line"
+                className={
+                  "inline-flex items-center justify-center gap-2 rounded-md px-4 py-3 ring-1 ring-line" +
+                  (pausePad.index === 1 ? " ring-2 ring-accent" : "")
+                }
               >
                 <Settings2 className="size-4" /> Options
               </button>
               <button
                 type="button"
                 onClick={onQuit}
-                className="inline-flex items-center justify-center gap-2 py-3 text-sm text-muted hover:text-fg"
+                className={
+                  "inline-flex items-center justify-center gap-2 py-3 text-sm text-muted hover:text-fg" +
+                  (pausePad.index === 2 ? " ring-2 ring-accent" : "")
+                }
               >
                 <LogOut className="size-4" /> Quit to hub
               </button>

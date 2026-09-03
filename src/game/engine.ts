@@ -4,7 +4,7 @@ import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
 import { loadCharacter, type CharacterRig } from "./load-character";
 import { loadInv, saveInv, loadBuild, saveBuild } from "./inventory";
 import { loadSfx, playSfx, unlockAudio } from "./audio";
-import { readPad } from "./pad";
+import { getPadBinds, readPad } from "./pad";
 import type {
   Bindings,
   BuildPart,
@@ -916,6 +916,7 @@ export class GameEngine {
     }
     this.padMove.x = frame.moveX;
     this.padMove.y = frame.moveY;
+    const pb = getPadBinds();
     const canLook = !this.menuOpen && !this.paused && !this.loading;
     if (canLook) {
       this.yaw -= frame.lookX * 2.5 * dt;
@@ -923,38 +924,39 @@ export class GameEngine {
       const lim = Math.PI / 2 - 0.04;
       this.pitch = Math.max(-lim, Math.min(lim, this.pitch));
     }
-    this.padSprint = frame.sprint;
+    this.padSprint = frame.held(pb.sprint);
+    const trig = frame.held(pb.fire);
     if (canLook) {
-      if (frame.fire && !this.padTrig) {
+      if (trig && !this.padTrig) {
         this.placeArmed = true;
         this.fireHeld = true;
         this.fire(false);
-      } else if (!frame.fire && this.padTrig) {
+      } else if (!trig && this.padTrig) {
         this.fireHeld = false;
         this.placeArmed = false;
       }
-      this.padTrig = frame.fire;
+      this.padTrig = trig;
     } else if (this.padTrig) {
       this.padTrig = false;
       this.fireHeld = false;
     }
-    if (frame.edge(0)) {
-      if (this.paused) this.setPaused(false);
-      else if (this.menuOpen) this.closeMenu();
+    if (this.paused) return;
+    if (frame.edge(pb.confirm) || frame.edge(pb.jump)) {
+      if (this.menuOpen) this.closeMenu();
       else {
         if (!this.locked) this.requestLock();
         this.padJump = true;
       }
     }
-    if (frame.edge(1)) {
+    if (frame.edge(pb.back)) {
       if (this.menuOpen) this.closeMenu();
-      else this.setPaused(!this.paused);
+      else this.setPaused(true);
     }
-    if (frame.edge(2)) this.toggleCam();
-    if (frame.edge(3) || frame.edge(9)) this.toggleMenu();
-    if (frame.edge(4) || frame.edge(14)) this.cycle(-1);
-    if (frame.edge(5) || frame.edge(15)) this.cycle(1);
-    if (frame.edge(8)) this.setPaused(!this.paused);
+    if (frame.edge(pb.cam)) this.toggleCam();
+    if (frame.edge(pb.menu)) this.toggleMenu();
+    if (frame.edge(pb.cyclePrev)) this.cycle(-1);
+    if (frame.edge(pb.cycleNext)) this.cycle(1);
+    if (frame.edge(pb.pause)) this.setPaused(!this.paused);
   }
 
   lookDelta(dx: number, dy: number) {
