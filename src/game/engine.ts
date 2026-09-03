@@ -4,6 +4,7 @@ import { FBXLoader } from "three/addons/loaders/FBXLoader.js";
 import { loadCharacter, type CharacterRig } from "./load-character";
 import { loadInv, saveInv, loadBuild, saveBuild } from "./inventory";
 import { loadSfx, playSfx, unlockAudio } from "./audio";
+import { readPad } from "./pad";
 import type {
   Bindings,
   BuildPart,
@@ -129,6 +130,12 @@ export class GameEngine {
   private gunKick = 0;
   private lookTouch: { id: number; x: number; y: number } | null = null;
   private moveStick = { x: 0, y: 0 };
+  private padMove = { x: 0, y: 0 };
+  private padSprint = false;
+  private padJump = false;
+  private padConnected = false;
+  private padPrev: boolean[] = [];
+  private padTrig = false;
 
   constructor(opts: EngineOpts) {
     this.opts = opts;
@@ -168,6 +175,7 @@ export class GameEngine {
       cam: this.cam,
       loading: this.loading,
       hint: this.hint,
+      pad: this.padConnected,
     };
     const k = JSON.stringify(snap);
     if (k === this.lastHud) return;
@@ -280,6 +288,7 @@ export class GameEngine {
     if (this.buildMode) this.part = this.part === "floor" ? "wall" : "floor";
     else this.setTool(this.tool === "axe" ? "gun" : "axe");
     void dir;
+    this.hud();
   }
 
   private setToolOrPart(i: number) {
@@ -769,12 +778,13 @@ export class GameEngine {
   private tick = () => {
     if (this.disposed) return;
     let dt = this.clock.getDelta();
+    dt = Math.min(dt, 0.08);
+    this.pollPad(dt);
     if (this.paused || this.menuOpen) {
       this.renderer.render(this.scene, this.camera);
       this.hud();
       return;
     }
-    dt = Math.min(dt, 0.08);
     if (this.loading) {
       this.renderer.render(this.scene, this.camera);
       return;
@@ -798,12 +808,14 @@ export class GameEngine {
     if (this.keys.has(b.left)) ix -= 1;
     ix += this.moveStick.x;
     iz += this.moveStick.y;
+    ix += this.padMove.x;
+    iz += this.padMove.y;
     const len = Math.hypot(ix, iz);
     if (len > 1) {
       ix /= len;
       iz /= len;
     }
-    const sprint = this.keys.has(b.sprint);
+    const sprint = this.keys.has(b.sprint) || this.padSprint;
     const sp = sprint ? SPRINT : WALK;
     const fx = -Math.sin(this.yaw);
     const fz = -Math.cos(this.yaw);
@@ -816,7 +828,7 @@ export class GameEngine {
     this.pos.x = next.x;
     this.pos.z = next.z;
 
-    if (this.keys.has(b.jump) && this.grounded) {
+    if ((this.keys.has(b.jump) || this.padJump) && this.grounded) {
       this.vy = 6.2;
       this.grounded = false;
     }
@@ -887,6 +899,64 @@ export class GameEngine {
     this.moveStick.y = y;
   }
 
+  private pollPad(dt: number) {
+    this.padMove.x = 0;
+    this.padMove.y = 0;
+    this.padSprint = false;
+    this.padJump = false;
+    const { frame, nextPrev } = readPad(this.padPrev);
+    this.padPrev = nextPrev;
+    this.padConnected = frame.connected;
+    if (!frame.connected) {
+      if (this.padTrig) {
+        this.padTrig = false;
+        this.fireHeld = false;
+      }
+      return;
+    }
+    this.padMove.x = frame.moveX;
+    this.padMove.y = frame.moveY;
+    const canLook = !this.menuOpen && !this.paused && !this.loading;
+    if (canLook) {
+      this.yaw -= frame.lookX * 2.5 * dt;
+      this.pitch -= frame.lookY * 2.1 * dt;
+      const lim = Math.PI / 2 - 0.04;
+      this.pitch = Math.max(-lim, Math.min(lim, this.pitch));
+    }
+    this.padSprint = frame.sprint;
+    if (canLook) {
+      if (frame.fire && !this.padTrig) {
+        this.placeArmed = true;
+        this.fireHeld = true;
+        this.fire(false);
+      } else if (!frame.fire && this.padTrig) {
+        this.fireHeld = false;
+        this.placeArmed = false;
+      }
+      this.padTrig = frame.fire;
+    } else if (this.padTrig) {
+      this.padTrig = false;
+      this.fireHeld = false;
+    }
+    if (frame.edge(0)) {
+      if (this.paused) this.setPaused(false);
+      else if (this.menuOpen) this.closeMenu();
+      else {
+        if (!this.locked) this.requestLock();
+        this.padJump = true;
+      }
+    }
+    if (frame.edge(1)) {
+      if (this.menuOpen) this.closeMenu();
+      else this.setPaused(!this.paused);
+    }
+    if (frame.edge(2)) this.toggleCam();
+    if (frame.edge(3) || frame.edge(9)) this.toggleMenu();
+    if (frame.edge(4) || frame.edge(14)) this.cycle(-1);
+    if (frame.edge(5) || frame.edge(15)) this.cycle(1);
+    if (frame.edge(8)) this.setPaused(!this.paused);
+  }
+
   lookDelta(dx: number, dy: number) {
     this.yaw -= dx * 0.003;
     this.pitch -= dy * 0.003;
@@ -936,6 +1006,7 @@ export class GameEngine {
         pos: this.pos.toArray(),
         cam: this.cam,
         wood: this.wood,
+        pad: this.padConnected,
         trees: this.trees.filter((t) => t.hp > 0).length,
       }),
       capture: () => this.opts.canvas.toDataURL("image/jpeg", 0.6),
