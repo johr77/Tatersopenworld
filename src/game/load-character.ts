@@ -174,7 +174,9 @@ export async function loadCharacter(charId: string, height = 1.7): Promise<Chara
 
   const q = new THREE.Quaternion();
   const e = new THREE.Euler();
-  const APOSE = 0.56;
+  // UBC rest is T-pose. Local -Z on upperarm_l / +Z on upperarm_r drops arms to the hips.
+  // The old APOSE = 0.56 with flipped signs RAISED them.
+  const HANG = 1.18;
 
   function apply(bone: THREE.Object3D | null, ax: number, ay: number, az: number) {
     if (!bone) return;
@@ -211,11 +213,11 @@ export async function loadCharacter(charId: string, height = 1.7): Promise<Chara
       apply(calfR, Math.max(0, walk) * 0.5, 0, 0);
       apply(spine, idle, 0, idle * 0.35);
 
-      let armRx = -walk * 0.55;
-      let armLx = walk * 0.55;
-      let armRz = -APOSE;
-      let armLz = APOSE;
-      let low = 0.38;
+      let armRx = walk * 0.55;
+      let armLx = -walk * 0.55;
+      let armRz = HANG;
+      let armLz = -HANG;
+      let low = 0.28;
       if (chopT > 0) {
         const u = 1 - chopT / 0.32;
         const swing =
@@ -223,11 +225,11 @@ export async function loadCharacter(charId: string, height = 1.7): Promise<Chara
             ? THREE.MathUtils.lerp(0, -1.35, u / 0.45)
             : THREE.MathUtils.lerp(-1.35, 1.15, (u - 0.45) / 0.55);
         armRx = swing;
-        armRz = 0;
+        armRz = HANG * 0.15;
         low = u < 0.45 ? 0.4 : 0.9;
       } else if (fireT > 0) {
         armRx = -0.55;
-        armRz = -0.18;
+        armRz = HANG * 0.35;
         low = 0.85 + Math.sin((1 - fireT / 0.16) * Math.PI) * 0.25;
       }
       apply(armL, armLx, 0, armLz + idle);
