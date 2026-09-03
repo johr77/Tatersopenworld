@@ -155,13 +155,13 @@ Do push: game source (`src/game`, `src/components`, routes, `startup.sh`), `publ
 
 Workspace often has **no `.git`**. Clone `Tatersopenworld`, copy project files in (do **not** overwrite `CC0files` with an empty folder), commit, push `main` as **johr77**. `github___push_files` is text-only and too small for `public/env` binaries — use `git` + `gh auth`.
 
-Last GitHub commit before the full game source landed was scaffold-only (`365733c`). After a successful push, note the new SHA here.
+Last GitHub commit: **`7ddafed`** (2026-09-03) — playable camp + UBC hair attach. `CC0files/` kept. After a successful push, update this SHA.
 
 ---
 
 ## Changelog (newest first)
 
-- **2026-09-03 (this turn):** Locked `HANDOFF.md` + `AGENTS.project.md` (warn-and-wait; never rebuild if `src/game` exists). Character pass: `hairs[]`, Bram buzzed+beard, **bake hair onto Head** (Long/Buns no longer float), A-pose idle, hair `alphaTest`, brighter preview lights. Copy of this file at `artifacts/HANDOFF.md`.
+- **2026-09-03 (this turn):** Locked `HANDOFF.md` + `AGENTS.project.md` (warn-and-wait; never rebuild if `src/game` exists). Character pass: `hairs[]`, Bram buzzed+beard, **bake hair onto Head** (Long/Buns no longer float), A-pose idle, hair `alphaTest`, brighter preview lights. Pushed **`7ddafed`** to `johr77/Tatersopenworld` `main` (kept `CC0files/`). Copy of this file at `artifacts/HANDOFF.md`.
 - **2026-09-03:** Sandbox had been wiped. Rebuilt playable camp from UBC/Kenney/KayKit/Makarov. Title→roster→hub→play. Perimeter wall, M menu, delete player, UBC bodies. Preview on 8080.
 - **2026-09-03 earlier:** Grok outage. Playable FPS source lost. Pushed empty scaffold to GitHub; `CC0files/` survived on `main`.
 - **Before outage:** Kenney Mixamo bodies, facing/T-pose/tool-scale/1-piece-place/3 m walls fixed. Wes video: walk/facing OK; axe swing backward; gun hard to see; wanted UBC, delete player, inset wall, M=menu.
