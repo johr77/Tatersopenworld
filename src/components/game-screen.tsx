@@ -16,6 +16,7 @@ const EMPTY: HudSnap = {
   cam: "third",
   loading: "Loading camp…",
   hint: "",
+  pad: false,
 };
 
 export function GameScreen({ player, onQuit }: { player: PlayerRecord; onQuit: () => void }) {
@@ -76,14 +77,14 @@ export function GameScreen({ player, onQuit }: { player: PlayerRecord; onQuit: (
         </div>
       ) : null}
 
-      {!hud.locked && !hud.menuOpen && !hud.paused && !hud.loading ? (
+      {!hud.locked && !hud.pad && !hud.menuOpen && !hud.paused && !hud.loading ? (
         <button
           type="button"
           className="absolute inset-0 z-10 grid place-items-center bg-bg/40"
           onClick={() => e?.requestLock()}
         >
           <span className="rounded-md bg-surface px-5 py-3 text-sm ring-1 ring-line">
-            Click to play · WASD look · M menu
+            Click to play · WASD · M menu · Xbox A to start
           </span>
         </button>
       ) : null}
@@ -100,6 +101,7 @@ export function GameScreen({ player, onQuit }: { player: PlayerRecord; onQuit: (
       </div>
       <div className="pointer-events-none absolute right-4 top-4 z-10 rounded-md bg-surface/80 px-3 py-2 text-xs text-muted ring-1 ring-line">
         {hud.cam === "third" ? "Chase" : "First"} · {hud.buildMode ? "Build" : "Tools"}
+        {hud.pad ? " · Pad" : ""}
       </div>
 
       <div className="absolute bottom-5 left-1/2 z-10 flex -translate-x-1/2 gap-2">
