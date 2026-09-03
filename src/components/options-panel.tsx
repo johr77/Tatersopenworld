@@ -61,7 +61,10 @@ export function OptionsPanel({ onClose }: { onClose: () => void }) {
           </li>
         ))}
       </ul>
-      <p className="text-xs text-subtle">Mouse look · Left click use · Wheel cycles tools or build parts</p>
+      <p className="text-xs text-subtle">
+        Mouse look · Left click use · Wheel cycles tools or build parts. Xbox: LS move, RS look, RT
+        chop/place, LT sprint, A jump / start, B back, X camera, Y / Menu radial, LB/RB cycle.
+      </p>
       <button type="button" onClick={reset} className="self-start text-sm text-muted underline">
         Reset defaults
       </button>
