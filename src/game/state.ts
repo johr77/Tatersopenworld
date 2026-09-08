@@ -6,7 +6,7 @@ export const gameState = {
   ready: false,
   locked: false,
   playing: false,
-  look: "male-ranger" as LookId,
+  look: "mannequin" as LookId,
   playerName: "",
   yaw: 0,
   pitch: 0,

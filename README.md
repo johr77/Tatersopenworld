@@ -13,7 +13,6 @@ git clone https://github.com/johr77/Tatersopenworld.git
 cd Tatersopenworld
 npm install
 npm run dev
-npx vite dev --host 127.0.0.1 --port 8080
 ```
 
 Open the URL it prints (usually `http://localhost:8080`).

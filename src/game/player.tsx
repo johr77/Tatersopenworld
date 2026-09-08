@@ -10,9 +10,10 @@ import { gameState } from "./state";
 import { playEmpty, playGunshot, playImpact } from "./audio";
 import { resolveCircle } from "./world-data";
 import { attachWeapons, makeViewmodel, WEAPONS, type WeaponHandle } from "./weapon";
-import { lookFile, type LookId } from "./profiles";
+import { type LookId } from "./profiles";
 
 useGLTF.preload("/models/character.glb");
+useGLTF.preload("/models/character_f.glb");
 
 const WALK_SPEED = 3.2;
 const SPRINT_SPEED = 7.4;
@@ -41,8 +42,6 @@ const CLIP = {
   shoot: "Pistol_Shoot",
   reload: "Pistol_Reload",
   aim: "Pistol_Aim_Neutral",
-  aimDown: "Pistol_Aim_Down",
-  pistolIdle: "Pistol_Idle_Loop",
 };
 
 type MixerAction = THREE.AnimationAction;
@@ -90,14 +89,6 @@ function makeController(root: THREE.Object3D, clips: THREE.AnimationClip[]) {
   return { mixer, play, setBackpedal, get current() { return current; }, actions };
 }
 
-function collectBones(root: THREE.Object3D) {
-  const map = new Map<string, THREE.Object3D>();
-  root.traverse((o) => {
-    if (o.name) map.set(o.name, o);
-  });
-  return map;
-}
-
 function resetBind(root: THREE.Object3D) {
   root.traverse((o) => {
     const mesh = o as THREE.SkinnedMesh;
@@ -105,70 +96,41 @@ function resetBind(root: THREE.Object3D) {
   });
 }
 
-function needsHead(look: LookId) {
-  return look === "male-peasant" || look === "female-peasant";
-}
-
-function pairBones(srcRoot: THREE.Object3D, dstRoot: THREE.Object3D) {
-  const src = collectBones(srcRoot);
-  const dst = collectBones(dstRoot);
-  const pairs: {
-    src: THREE.Object3D;
-    dst: THREE.Object3D;
-    srcRest: THREE.Quaternion;
-    dstRest: THREE.Quaternion;
-    srcRestPos: THREE.Vector3;
-    dstRestPos: THREE.Vector3;
-  }[] = [];
-  for (const [name, a] of src) {
-    const b = dst.get(name);
-    if (b && b !== a) {
-      pairs.push({
-        src: a,
-        dst: b,
-        srcRest: a.quaternion.clone(),
-        dstRest: b.quaternion.clone(),
-        srcRestPos: a.position.clone(),
-        dstRestPos: b.position.clone(),
-      });
+function paintMannequin(root: THREE.Object3D, female: boolean) {
+  const body = female ? "#d2b48c" : "#c9b89a";
+  const joints = female ? "#4a3f38" : "#2f3b34";
+  root.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh) return;
+    m.castShadow = true;
+    m.receiveShadow = true;
+    m.frustumCulled = false;
+    const mats = Array.isArray(m.material) ? m.material : [m.material];
+    for (const raw of mats) {
+      const mat = raw as THREE.MeshStandardMaterial;
+      if (!mat) continue;
+      const n = (mat.name || "").toLowerCase();
+      if (n.includes("joint") || n.includes("dark") || n.includes("black")) mat.color.set(joints);
+      else mat.color.set(body);
     }
-  }
-  return pairs;
+  });
 }
 
 export function Player() {
   const { camera, gl, scene } = useThree();
   const [look, setLook] = useState<LookId>(gameState.look);
-  const isMannequin = look === "mannequin";
-  const ualGltf = useGLTF("/models/character.glb");
-  const skinGltf = useGLTF(lookFile(look));
-  const ual = useMemo(() => cloneSkinned(ualGltf.scene), [ualGltf.scene]);
-  const skin = useMemo(
-    () => (look === "mannequin" ? ual : cloneSkinned(skinGltf.scene)),
-    [look, ual, skinGltf.scene],
+  const maleGltf = useGLTF("/models/character.glb");
+  const femaleGltf = useGLTF("/models/character_f.glb");
+  const isFemale = look === "female";
+  const body = useMemo(
+    () => cloneSkinned(isFemale ? femaleGltf.scene : maleGltf.scene),
+    [isFemale, femaleGltf.scene, maleGltf.scene],
   );
   const controller = useMemo(
-    () => makeController(ual, ualGltf.animations),
-    [ual, ualGltf.animations],
+    () => makeController(body, maleGltf.animations),
+    [body, maleGltf.animations],
   );
-  const pairs = useRef<
-    {
-      src: THREE.Object3D;
-      dst: THREE.Object3D;
-      srcRest: THREE.Quaternion;
-      dstRest: THREE.Quaternion;
-      srcRestPos: THREE.Vector3;
-      dstRestPos: THREE.Vector3;
-    }[]
-  >([]);
-  const qInv = useRef(new THREE.Quaternion());
-  const qDelta = useRef(new THREE.Quaternion());
-  const posDelta = useRef(new THREE.Vector3());
   const plantBox = useRef(new THREE.Box3());
-  const clipPlane = useRef(new THREE.Plane(new THREE.Vector3(0, 1, 0), -1.5));
-  const neckPos = useRef(new THREE.Vector3());
-  const neckUp = useRef(new THREE.Vector3(0, 1, 0));
-  const headOnly = needsHead(look);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -212,45 +174,15 @@ export function Player() {
 
   useEffect(() => {
     initInput();
-    gl.localClippingEnabled = true;
     controller.mixer.stopAllAction();
-    resetBind(ual);
-    if (look !== "mannequin") resetBind(skin);
-
-    ual.visible = true;
-    ual.traverse((o) => {
-      const m = o as THREE.Mesh;
-      if (!m.isMesh) return;
-      m.castShadow = true;
-      m.receiveShadow = true;
-      m.frustumCulled = false;
-      const mats = Array.isArray(m.material) ? m.material : [m.material];
-      for (const raw of mats) {
-        const mat = raw as THREE.MeshStandardMaterial;
-        if (mat.name === "M_Main") mat.color.set("#c9b89a");
-        if (mat.name === "M_Joints") mat.color.set("#2f3b34");
-        mat.clippingPlanes = headOnly ? [clipPlane.current] : [];
-        mat.clipShadows = headOnly;
-      }
-    });
-    if (look !== "mannequin") {
-      skin.traverse((obj) => {
-        const mesh = obj as THREE.Mesh;
-        if (!mesh.isMesh) return;
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
-        mesh.frustumCulled = false;
-      });
-      pairs.current = pairBones(ual, skin);
-    } else {
-      pairs.current = [];
-    }
-    controller.play(CLIP.aimDown, 0);
+    resetBind(body);
+    paintMannequin(body, isFemale);
+    controller.play(CLIP.idle, 0);
+    controller.mixer.update(0);
 
     weapons.current?.dispose();
-    const hand = (look === "mannequin" ? ual : skin).getObjectByName("hand_r") || ual.getObjectByName("hand_r");
+    const hand = body.getObjectByName("hand_r");
     weapons.current = hand ? attachWeapons(hand) : null;
-    weapons.current?.setLowered(true);
     weapons.current?.setId(WEAPONS[weaponI.current].id);
 
     if (!viewmodel.current) {
@@ -291,12 +223,11 @@ export function Player() {
       },
       getLook: () => gameState.look,
       getDebug: () => ({
-        pairs: pairs.current.length,
-        ualBones: collectBones(ual).size,
-        skinBones: collectBones(skin).size,
-        hand: Boolean(skin.getObjectByName("hand_r")),
+        look,
+        hand: Boolean(body.getObjectByName("hand_r")),
         gunKids: weapons.current?.children() ?? 0,
         vmKids: viewmodel.current?.children() ?? 0,
+        clip: controller.current,
       }),
     };
 
@@ -306,7 +237,7 @@ export function Player() {
       weapons.current?.dispose();
       weapons.current = null;
     };
-  }, [camera, controller, gl, headOnly, look, scene, skin, ual]);
+  }, [body, camera, controller, isFemale, look, scene]);
 
   useEffect(() => {
     return () => {
@@ -466,7 +397,7 @@ export function Player() {
         const hit = hits.find((h) => {
           let o: THREE.Object3D | null = h.object;
           while (o) {
-            if (o === skin || o === ual || o === viewmodel.current?.root) return false;
+            if (o === body || o === viewmodel.current?.root) return false;
             o = o.parent;
           }
           return h.distance > 0.4;
@@ -503,7 +434,7 @@ export function Player() {
       else if (moving && xz > 4.2) controller.play(CLIP.jog);
       else if (moving) controller.play(CLIP.walk);
       else if (aiming) controller.play(CLIP.aim);
-      else controller.play(CLIP.aimDown);
+      else controller.play(CLIP.idle);
       controller.setBackpedal(moving && actions.moveY < -0.12);
     } else if (!grounded.current) {
       controller.setBackpedal(false);
@@ -516,13 +447,6 @@ export function Player() {
     }
 
     controller.mixer.update(dt);
-    for (const p of pairs.current) {
-      qInv.current.copy(p.srcRest).invert();
-      qDelta.current.copy(qInv.current).multiply(p.src.quaternion);
-      p.dst.quaternion.copy(p.dstRest).multiply(qDelta.current);
-      posDelta.current.copy(p.src.position).sub(p.srcRestPos);
-      p.dst.position.copy(p.dstRestPos).add(posDelta.current);
-    }
 
     const targetEye = wantCrouch ? EYE_CROUCH : EYE_STAND;
     eye.current = THREE.MathUtils.damp(eye.current, targetEye, 10, dt);
@@ -531,39 +455,17 @@ export function Player() {
 
     const inMenu = !gameState.playing;
     const bodyYaw = inMenu ? 0.38 : yaw.current + Math.PI;
-    ual.position.copy(pos.current);
-    ual.rotation.order = "YXZ";
-    ual.rotation.y = bodyYaw;
-    skin.position.copy(pos.current);
-    skin.rotation.order = "YXZ";
-    skin.rotation.y = bodyYaw;
-    if (!isMannequin) {
-      skin.updateMatrixWorld(true);
-      plantBox.current.setFromObject(skin);
-      if (Number.isFinite(plantBox.current.min.y)) {
-        const lift = pos.current.y - plantBox.current.min.y;
-        if (Math.abs(lift) > 0.001) {
-          skin.position.y += lift;
-          ual.position.y += lift;
-        }
-      }
-    }
-    if (headOnly) {
-      const neck = ual.getObjectByName("neck_01") || ual.getObjectByName("Head");
-      if (neck) {
-        neck.getWorldPosition(neckPos.current);
-        neckPos.current.y -= 0.04;
-        clipPlane.current.setFromNormalAndCoplanarPoint(neckUp.current, neckPos.current);
-      }
+    body.position.copy(pos.current);
+    body.rotation.order = "YXZ";
+    body.rotation.y = bodyYaw;
+    body.updateMatrixWorld(true);
+    plantBox.current.setFromObject(body);
+    if (Number.isFinite(plantBox.current.min.y)) {
+      const lift = pos.current.y - plantBox.current.min.y;
+      if (Math.abs(lift) > 0.001) body.position.y += lift;
     }
     const showBody = inMenu || view.current === "third";
-    const showUal = showBody && (isMannequin || headOnly);
-    ual.visible = showUal;
-    ual.traverse((o) => {
-      const m = o as THREE.Mesh;
-      if (m.isMesh) m.visible = showUal;
-    });
-    if (!isMannequin) skin.visible = showBody;
+    body.visible = showBody;
     if (viewmodel.current) viewmodel.current.root.visible = !inMenu && view.current === "fps";
     if (muzzle.current) muzzle.current.intensity = flash.current > 0 ? 18 : 0;
 
@@ -622,8 +524,7 @@ export function Player() {
 
   return (
     <group>
-      <primitive object={ual} />
-      {look !== "mannequin" && skin !== ual ? <primitive object={skin} /> : null}
+      <primitive object={body} />
       <pointLight ref={muzzle} color="#ffd9a0" distance={4} intensity={0} />
     </group>
   );

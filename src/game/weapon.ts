@@ -60,24 +60,21 @@ function harden(root: THREE.Object3D) {
   });
 }
 
+/** Quaternius OBJ guns: barrel +X, up +Y, thin Z. Map barrel to camera-forward −Z. */
 function aimBarrelNegZ(obj: THREE.Object3D, length: number) {
+  obj.rotation.set(0, Math.PI / 2, 0);
   obj.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(obj);
   const size = box.getSize(new THREE.Vector3());
-  const center = box.getCenter(new THREE.Vector3());
-  obj.position.sub(center);
-  if (size.y >= size.x && size.y >= size.z) obj.rotation.x = -Math.PI / 2;
-  else if (size.x >= size.z) obj.rotation.y = Math.PI / 2;
+  obj.position.sub(box.getCenter(new THREE.Vector3()));
+  obj.scale.multiplyScalar(length / Math.max(size.x, size.y, size.z, 0.001));
   obj.updateMatrixWorld(true);
   const box2 = new THREE.Box3().setFromObject(obj);
-  const size2 = box2.getSize(new THREE.Vector3());
-  obj.scale.multiplyScalar(length / Math.max(size2.x, size2.y, size2.z, 0.001));
+  obj.position.sub(box2.getCenter(new THREE.Vector3()));
   obj.updateMatrixWorld(true);
   const box3 = new THREE.Box3().setFromObject(obj);
-  obj.position.sub(box3.getCenter(new THREE.Vector3()));
-  if (Math.abs(box3.min.z) > Math.abs(box3.max.z)) obj.position.z -= length * 0.18;
-  else obj.position.z += length * 0.18;
-  obj.position.y -= length * 0.03;
+  obj.position.z += -box3.max.z + length * 0.12;
+  obj.position.y -= length * 0.04;
 }
 
 function loadGun(def: WeaponDef): Promise<THREE.Object3D> {
@@ -129,6 +126,21 @@ function loadGun(def: WeaponDef): Promise<THREE.Object3D> {
   });
 }
 
+const templates: Partial<Record<WeaponId, THREE.Object3D>> = {};
+const loading: Partial<Record<WeaponId, Promise<THREE.Object3D>>> = {};
+
+function getGun(def: WeaponDef): Promise<THREE.Object3D> {
+  const ready = templates[def.id];
+  if (ready) return Promise.resolve(ready.clone(true));
+  if (!loading[def.id]) {
+    loading[def.id] = loadGun(def).then((gun) => {
+      templates[def.id] = gun;
+      return gun;
+    });
+  }
+  return loading[def.id]!.then((gun) => gun.clone(true));
+}
+
 export type WeaponHandle = {
   root: THREE.Group;
   setId: (id: WeaponId) => void;
@@ -141,7 +153,7 @@ function fill(parent: THREE.Group) {
   const slots = {} as Record<WeaponId, THREE.Object3D>;
   const ready = Promise.all(
     WEAPONS.map((def) =>
-      loadGun(def).then((gun) => {
+      getGun(def).then((gun) => {
         gun.visible = false;
         parent.add(gun);
         slots[def.id] = gun;
@@ -155,12 +167,11 @@ export function attachWeapons(hand: THREE.Object3D): WeaponHandle {
   const root = new THREE.Group();
   root.name = "WeaponHold";
   hand.add(root);
-  const restPos = new THREE.Vector3(0.02, 0.11, 0.015);
-  const lowPos = new THREE.Vector3(0.02, 0.1, 0.03);
+  // hand_r +Y = fingers. Gun barrel is −Z, so Rx(90) aims along the hand.
+  const restPos = new THREE.Vector3(0.02, 0.1, 0.02);
   const restRot = new THREE.Euler(Math.PI / 2, 0, 0);
-  const lowRot = new THREE.Euler(Math.PI / 2 + 0.55, 0, 0.12);
-  root.position.copy(lowPos);
-  root.rotation.copy(lowRot);
+  root.position.copy(restPos);
+  root.rotation.copy(restRot);
 
   const { slots, ready } = fill(root);
   let current: WeaponId = "ar";
@@ -175,9 +186,9 @@ export function attachWeapons(hand: THREE.Object3D): WeaponHandle {
   return {
     root,
     setId: show,
-    setLowered: (low) => {
-      root.position.copy(low ? lowPos : restPos);
-      root.rotation.copy(low ? lowRot : restRot);
+    setLowered: () => {
+      root.position.copy(restPos);
+      root.rotation.copy(restRot);
     },
     children: () => root.children.length,
     dispose: () => {
@@ -189,10 +200,10 @@ export function attachWeapons(hand: THREE.Object3D): WeaponHandle {
 export function makeViewmodel(): WeaponHandle {
   const root = new THREE.Group();
   root.name = "Viewmodel";
-  const hipPos = new THREE.Vector3(0.26, -0.22, -0.46);
-  const adsPos = new THREE.Vector3(0.0, -0.13, -0.4);
-  const hipRot = new THREE.Euler(0.1, Math.PI, 0.03);
-  const adsRot = new THREE.Euler(0.02, Math.PI, 0);
+  const hipPos = new THREE.Vector3(0.28, -0.24, -0.5);
+  const adsPos = new THREE.Vector3(0.0, -0.145, -0.38);
+  const hipRot = new THREE.Euler(0.08, 0, 0.04);
+  const adsRot = new THREE.Euler(0, 0, 0);
   root.position.copy(hipPos);
   root.rotation.copy(hipRot);
 
