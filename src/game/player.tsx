@@ -209,6 +209,7 @@ export function Player() {
   const lastFov = useRef(70);
   const lastNear = useRef(0.08);
   const landHold = useRef(0);
+  const stickLookLatch = useRef(false);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -366,30 +367,10 @@ export function Player() {
     const mouseSens = SENS * settings.mouseSens * (aiming ? 0.55 : 1);
     const stickRate = 2.35 * settings.stickSens;
     const stickHeld = Math.hypot(actions.lookStickX, actions.lookStickY) > 0.12;
-    const peekStick = third && !aiming;
 
-    if (third && aiming && (Math.abs(orbitYaw.current) > 0.002 || Math.abs(orbitPitch.current) > 0.002)) {
-      yaw.current += orbitYaw.current;
-      pitch.current += orbitPitch.current;
-      orbitYaw.current = 0;
-      orbitPitch.current = 0;
-    }
-
-    if (peekStick) {
-      if (mouse.locked && actions.freeLook) {
-        orbitYaw.current -= lookDelta.dx * mouseSens;
-        orbitPitch.current -= lookDelta.dy * mouseSens;
-      } else if (mouse.locked) {
-        yaw.current -= lookDelta.dx * mouseSens;
-        pitch.current -= lookDelta.dy * mouseSens;
-      }
-      if (stickHeld) {
-        orbitYaw.current -= actions.lookStickX * stickRate * dt;
-        orbitPitch.current -= actions.lookStickY * 1.9 * settings.stickSens * dt;
-      } else {
-        orbitYaw.current = THREE.MathUtils.damp(orbitYaw.current, 0, 10, dt);
-        orbitPitch.current = THREE.MathUtils.damp(orbitPitch.current, 0, 10, dt);
-      }
+    if (third && actions.freeLook && mouse.locked) {
+      orbitYaw.current -= lookDelta.dx * mouseSens;
+      orbitPitch.current -= lookDelta.dy * mouseSens;
     } else {
       if (mouse.locked) {
         yaw.current -= lookDelta.dx * mouseSens;
@@ -397,12 +378,21 @@ export function Player() {
       }
       yaw.current -= actions.lookStickX * stickRate * dt;
       pitch.current -= actions.lookStickY * 1.9 * settings.stickSens * dt;
-      orbitYaw.current = THREE.MathUtils.damp(orbitYaw.current, 0, 14, dt);
-      orbitPitch.current = THREE.MathUtils.damp(orbitPitch.current, 0, 14, dt);
+      orbitYaw.current = THREE.MathUtils.damp(orbitYaw.current, 0, 12, dt);
+      orbitPitch.current = THREE.MathUtils.damp(orbitPitch.current, 0, 12, dt);
     }
 
+    if (stickHeld) stickLookLatch.current = true;
+    if (third && !aiming && !stickHeld && stickLookLatch.current) {
+      pitch.current = THREE.MathUtils.damp(pitch.current, 0, 8, dt);
+      if (Math.abs(pitch.current) < 0.025) {
+        pitch.current = 0;
+        stickLookLatch.current = false;
+      }
+    }
+    if (aiming) stickLookLatch.current = false;
+
     pitch.current = Math.max(-PITCH_LIM, Math.min(PITCH_LIM, pitch.current));
-    orbitYaw.current = Math.max(-1.35, Math.min(1.35, orbitYaw.current));
     orbitPitch.current = Math.max(-0.9, Math.min(0.7, orbitPitch.current));
 
     const lookYaw = yaw.current + orbitYaw.current;
