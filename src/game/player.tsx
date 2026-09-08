@@ -365,10 +365,31 @@ export function Player() {
     const aiming = actions.aim;
     const mouseSens = SENS * settings.mouseSens * (aiming ? 0.55 : 1);
     const stickRate = 2.35 * settings.stickSens;
+    const stickHeld = Math.hypot(actions.lookStickX, actions.lookStickY) > 0.12;
+    const peekStick = third && !aiming;
 
-    if (third && actions.freeLook && mouse.locked) {
-      orbitYaw.current -= lookDelta.dx * mouseSens;
-      orbitPitch.current -= lookDelta.dy * mouseSens;
+    if (third && aiming && (Math.abs(orbitYaw.current) > 0.002 || Math.abs(orbitPitch.current) > 0.002)) {
+      yaw.current += orbitYaw.current;
+      pitch.current += orbitPitch.current;
+      orbitYaw.current = 0;
+      orbitPitch.current = 0;
+    }
+
+    if (peekStick) {
+      if (mouse.locked && actions.freeLook) {
+        orbitYaw.current -= lookDelta.dx * mouseSens;
+        orbitPitch.current -= lookDelta.dy * mouseSens;
+      } else if (mouse.locked) {
+        yaw.current -= lookDelta.dx * mouseSens;
+        pitch.current -= lookDelta.dy * mouseSens;
+      }
+      if (stickHeld) {
+        orbitYaw.current -= actions.lookStickX * stickRate * dt;
+        orbitPitch.current -= actions.lookStickY * 1.9 * settings.stickSens * dt;
+      } else {
+        orbitYaw.current = THREE.MathUtils.damp(orbitYaw.current, 0, 10, dt);
+        orbitPitch.current = THREE.MathUtils.damp(orbitPitch.current, 0, 10, dt);
+      }
     } else {
       if (mouse.locked) {
         yaw.current -= lookDelta.dx * mouseSens;
@@ -376,11 +397,12 @@ export function Player() {
       }
       yaw.current -= actions.lookStickX * stickRate * dt;
       pitch.current -= actions.lookStickY * 1.9 * settings.stickSens * dt;
-      orbitYaw.current = THREE.MathUtils.damp(orbitYaw.current, 0, 12, dt);
-      orbitPitch.current = THREE.MathUtils.damp(orbitPitch.current, 0, 12, dt);
+      orbitYaw.current = THREE.MathUtils.damp(orbitYaw.current, 0, 14, dt);
+      orbitPitch.current = THREE.MathUtils.damp(orbitPitch.current, 0, 14, dt);
     }
 
     pitch.current = Math.max(-PITCH_LIM, Math.min(PITCH_LIM, pitch.current));
+    orbitYaw.current = Math.max(-1.35, Math.min(1.35, orbitYaw.current));
     orbitPitch.current = Math.max(-0.9, Math.min(0.7, orbitPitch.current));
 
     const lookYaw = yaw.current + orbitYaw.current;
@@ -595,7 +617,7 @@ export function Player() {
       persp.position.copy(eyePos);
       persp.rotation.order = "YXZ";
       persp.rotation.y = yaw.current;
-      persp.rotation.x = -(pitch.current + recoil.current);
+      persp.rotation.x = pitch.current + recoil.current;
       persp.rotation.z = 0;
       nextFov = aiming ? 62 : 78;
       nextNear = 0.14;
