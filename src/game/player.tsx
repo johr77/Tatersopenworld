@@ -197,14 +197,14 @@ export function Player() {
 
   useEffect(() => {
     initInput();
-    const mannequin = look === "mannequin";
-    ual.visible = mannequin;
+    ual.visible = true;
     ual.traverse((o) => {
       const m = o as THREE.Mesh;
       if (!m.isMesh) return;
-      m.visible = mannequin;
+      m.visible = true;
       m.castShadow = true;
       m.receiveShadow = true;
+      m.frustumCulled = false;
       const mats = Array.isArray(m.material) ? m.material : [m.material];
       for (const raw of mats) {
         const mat = raw as THREE.MeshStandardMaterial;
@@ -212,7 +212,7 @@ export function Player() {
         if (mat.name === "M_Joints") mat.color.set("#2f3b34");
       }
     });
-    if (!mannequin) {
+    if (look !== "mannequin") {
       skin.traverse((obj) => {
         const mesh = obj as THREE.Mesh;
         if (!mesh.isMesh) return;
@@ -224,10 +224,10 @@ export function Player() {
     } else {
       pairs.current = [];
     }
-    controller.play(CLIP.idle, 0);
+    controller.play(CLIP.aimDown, 0);
 
     weapons.current?.dispose();
-    const hand = (mannequin ? ual : skin).getObjectByName("hand_r") || ual.getObjectByName("hand_r");
+    const hand = (look === "mannequin" ? ual : skin).getObjectByName("hand_r") || ual.getObjectByName("hand_r");
     weapons.current = hand ? attachWeapons(hand) : null;
     weapons.current?.setLowered(true);
     weapons.current?.setId(WEAPONS[weaponI.current].id);
@@ -482,7 +482,7 @@ export function Player() {
       else if (moving && xz > 4.2) controller.play(CLIP.jog);
       else if (moving) controller.play(CLIP.walk);
       else if (aiming) controller.play(CLIP.aim);
-      else controller.play(CLIP.idle);
+      else controller.play(CLIP.aimDown);
       controller.setBackpedal(moving && actions.moveY < -0.12);
     } else if (!grounded.current) {
       controller.setBackpedal(false);
@@ -508,7 +508,8 @@ export function Player() {
     if (moving) bob.current += dt * xz * 1.6;
     const bobY = moving ? Math.sin(bob.current) * 0.035 : 0;
 
-    const bodyYaw = yaw.current + Math.PI;
+    const inMenu = !gameState.playing;
+    const bodyYaw = inMenu ? Math.PI + 0.32 : yaw.current + Math.PI;
     ual.position.copy(pos.current);
     ual.rotation.order = "YXZ";
     ual.rotation.y = bodyYaw;
@@ -520,25 +521,29 @@ export function Player() {
       plantBox.current.setFromObject(skin);
       if (Number.isFinite(plantBox.current.min.y)) {
         const lift = pos.current.y - plantBox.current.min.y;
-        if (Math.abs(lift) > 0.001) skin.position.y += lift;
+        if (Math.abs(lift) > 0.001) {
+          skin.position.y += lift;
+          ual.position.y += lift;
+        }
       }
     }
-    const showBody = view.current === "third";
-    if (isMannequin) {
-      ual.visible = showBody;
-      ual.traverse((o) => {
-        const m = o as THREE.Mesh;
-        if (m.isMesh) m.visible = showBody;
-      });
-    } else {
-      ual.visible = false;
-      skin.visible = showBody;
-    }
-    if (viewmodel.current) viewmodel.current.root.visible = view.current === "fps";
+    const showBody = inMenu || view.current === "third";
+    ual.visible = showBody;
+    ual.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (m.isMesh) m.visible = showBody;
+    });
+    if (!isMannequin) skin.visible = showBody;
+    if (viewmodel.current) viewmodel.current.root.visible = !inMenu && view.current === "fps";
     if (muzzle.current) muzzle.current.intensity = flash.current > 0 ? 18 : 0;
 
     const persp = camera as THREE.PerspectiveCamera;
-    if (view.current === "fps") {
+    if (inMenu) {
+      persp.position.set(pos.current.x, 1.15, pos.current.z + 5.4);
+      persp.lookAt(pos.current.x, 0.88, pos.current.z);
+      persp.fov = 40;
+      persp.updateProjectionMatrix();
+    } else if (view.current === "fps") {
       persp.position.set(pos.current.x, pos.current.y + eye.current + bobY, pos.current.z);
       persp.rotation.order = "YXZ";
       persp.rotation.y = yaw.current;

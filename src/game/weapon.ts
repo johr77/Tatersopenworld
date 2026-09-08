@@ -60,20 +60,24 @@ function harden(root: THREE.Object3D) {
   });
 }
 
-function fitGun(obj: THREE.Object3D, length: number) {
-  // Keep Quaternius Y-up, barrel +Y. Scale only.
+function aimBarrelNegZ(obj: THREE.Object3D, length: number) {
   obj.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(obj);
   const size = box.getSize(new THREE.Vector3());
-  const longest = Math.max(size.x, size.y, size.z, 0.001);
-  obj.scale.multiplyScalar(length / longest);
+  const center = box.getCenter(new THREE.Vector3());
+  obj.position.sub(center);
+  if (size.y >= size.x && size.y >= size.z) obj.rotation.x = -Math.PI / 2;
+  else if (size.x >= size.z) obj.rotation.y = Math.PI / 2;
   obj.updateMatrixWorld(true);
   const box2 = new THREE.Box3().setFromObject(obj);
-  const c = box2.getCenter(new THREE.Vector3());
-  obj.position.x -= c.x;
-  obj.position.z -= c.z;
-  // Grip at the low end of +Y barrel so the hand holds the rear.
-  obj.position.y -= box2.min.y;
+  const size2 = box2.getSize(new THREE.Vector3());
+  obj.scale.multiplyScalar(length / Math.max(size2.x, size2.y, size2.z, 0.001));
+  obj.updateMatrixWorld(true);
+  const box3 = new THREE.Box3().setFromObject(obj);
+  obj.position.sub(box3.getCenter(new THREE.Vector3()));
+  if (Math.abs(box3.min.z) > Math.abs(box3.max.z)) obj.position.z -= length * 0.18;
+  else obj.position.z += length * 0.18;
+  obj.position.y -= length * 0.03;
 }
 
 function loadGun(def: WeaponDef): Promise<THREE.Object3D> {
@@ -92,7 +96,7 @@ function loadGun(def: WeaponDef): Promise<THREE.Object3D> {
           def.obj,
           (obj) => {
             harden(obj);
-            fitGun(obj, def.length);
+            aimBarrelNegZ(obj, def.length);
             wrap.add(obj);
             resolve(wrap);
           },
@@ -110,7 +114,7 @@ function loadGun(def: WeaponDef): Promise<THREE.Object3D> {
           def.obj,
           (obj) => {
             harden(obj);
-            fitGun(obj, def.length);
+            aimBarrelNegZ(obj, def.length);
             wrap.add(obj);
             resolve(wrap);
           },
@@ -151,11 +155,10 @@ export function attachWeapons(hand: THREE.Object3D): WeaponHandle {
   const root = new THREE.Group();
   root.name = "WeaponHold";
   hand.add(root);
-  // Barrel stays +Y (Quaternius). Hand +Y is the fingers, so identity follows aim poses.
-  const restPos = new THREE.Vector3(0.015, 0.09, 0.01);
-  const lowPos = new THREE.Vector3(0.02, 0.08, 0.02);
-  const restRot = new THREE.Euler(0, 0, 0);
-  const lowRot = new THREE.Euler(0.35, 0.1, 0.05);
+  const restPos = new THREE.Vector3(0.02, 0.11, 0.015);
+  const lowPos = new THREE.Vector3(0.02, 0.1, 0.03);
+  const restRot = new THREE.Euler(Math.PI / 2, 0, 0);
+  const lowRot = new THREE.Euler(Math.PI / 2 + 0.55, 0, 0.12);
   root.position.copy(lowPos);
   root.rotation.copy(lowRot);
 
@@ -186,11 +189,10 @@ export function attachWeapons(hand: THREE.Object3D): WeaponHandle {
 export function makeViewmodel(): WeaponHandle {
   const root = new THREE.Group();
   root.name = "Viewmodel";
-  const hipPos = new THREE.Vector3(0.28, -0.28, -0.52);
-  const adsPos = new THREE.Vector3(0.0, -0.16, -0.42);
-  // Viewmodel: +Y barrel → −Z camera forward.
-  const hipRot = new THREE.Euler(-Math.PI / 2, Math.PI, 0.08);
-  const adsRot = new THREE.Euler(-Math.PI / 2, Math.PI, 0);
+  const hipPos = new THREE.Vector3(0.26, -0.22, -0.46);
+  const adsPos = new THREE.Vector3(0.0, -0.13, -0.4);
+  const hipRot = new THREE.Euler(0.1, Math.PI, 0.03);
+  const adsRot = new THREE.Euler(0.02, Math.PI, 0);
   root.position.copy(hipPos);
   root.rotation.copy(hipRot);
 

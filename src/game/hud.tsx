@@ -113,11 +113,19 @@ function Stick({
   );
 }
 
-function OptionsPanel({ onClose, nav }: { onClose: () => void; nav: MenuNav | null }) {
+function OptionsPanel({
+  onClose,
+  onPlayers,
+  nav,
+}: {
+  onClose: () => void;
+  onPlayers?: () => void;
+  nav: MenuNav | null;
+}) {
   const [, setTick] = useState(0);
   const [listen, setListen] = useState<ActionId | null>(null);
-  const [focus, setFocus] = useState(BIND_ROWS.length + 1);
-  const n = BIND_ROWS.length + 2;
+  const [focus, setFocus] = useState(BIND_ROWS.length + 2);
+  const n = BIND_ROWS.length + (onPlayers ? 3 : 2);
 
   const refresh = () => setTick((x) => x + 1);
 
@@ -140,7 +148,8 @@ function OptionsPanel({ onClose, nav }: { onClose: () => void; nav: MenuNav | nu
         cancelRebind();
         setListen(null);
         refresh();
-      } else onClose();
+      } else if (onPlayers && focus === BIND_ROWS.length + 1) onPlayers();
+      else onClose();
     }
     if (nav.back) onClose();
   }, [nav]);
@@ -267,7 +276,22 @@ function OptionsPanel({ onClose, nav }: { onClose: () => void; nav: MenuNav | nu
           >
             Reset
           </button>
-          <button type="button" className="start-btn" data-focus={focus === BIND_ROWS.length + 1 ? "1" : "0"} onClick={onClose}>
+          {onPlayers && (
+            <button
+              type="button"
+              className="touch-btn"
+              data-focus={focus === BIND_ROWS.length + 1 ? "1" : "0"}
+              onClick={onPlayers}
+            >
+              Players
+            </button>
+          )}
+          <button
+            type="button"
+            className="start-btn"
+            data-focus={focus === BIND_ROWS.length + (onPlayers ? 2 : 1) ? "1" : "0"}
+            onClick={onClose}
+          >
             Done
           </button>
         </div>
@@ -535,6 +559,16 @@ export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | nul
     savePlayers(next);
   };
 
+  const toRoster = () => {
+    setPlaying(false);
+    gameState.playing = false;
+    setMenu(false);
+    setScreen("roster");
+    setFocus(0);
+    focusRef.current = 0;
+    document.exitPointerLock?.();
+  };
+
   const closeMenu = () => {
     setMenu(false);
     if (playing) lockPointer(hostRef.current);
@@ -627,7 +661,13 @@ export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | nul
         />
       )}
 
-      {menu && <OptionsPanel onClose={playing ? closeMenu : () => setMenu(false)} nav={nav} />}
+      {menu && (
+        <OptionsPanel
+          onClose={playing ? closeMenu : () => setMenu(false)}
+          onPlayers={playing ? toRoster : undefined}
+          nav={nav}
+        />
+      )}
 
       {playing && (
         <>
@@ -653,9 +693,14 @@ export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | nul
               <span className="hud-label">Gun</span>
               <span className="hud-value">{gameState.weapon}</span>
             </div>
-            <button type="button" className="hud-opt-btn" onClick={() => setMenu(true)}>
-              Options
-            </button>
+            <div className="hud-top-actions">
+              <button type="button" className="hud-opt-btn" onClick={toRoster}>
+                Players
+              </button>
+              <button type="button" className="hud-opt-btn" onClick={() => setMenu(true)}>
+                Options
+              </button>
+            </div>
           </div>
           <div className="hud-bottom">
             <div className="hud-chip">

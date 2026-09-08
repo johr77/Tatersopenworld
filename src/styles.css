@@ -378,9 +378,14 @@
   text-transform: uppercase;
 }
 
+.hud-top-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 8px;
+}
+
 .hud-opt-btn {
   pointer-events: auto;
-  margin-left: auto;
   height: 40px;
   padding: 0 14px;
   border: 1px solid color-mix(in oklab, var(--color-fg) 14%, transparent);
