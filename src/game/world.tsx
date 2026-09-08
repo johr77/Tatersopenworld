@@ -49,20 +49,21 @@ const KIND_URL: Record<Prop["kind"], string> = {
   RockPath_Round_Small_3: "/models/nature/RockPath_Round_Small_3.gltf",
 };
 
-function prepareScene(src: THREE.Object3D) {
+function prepareScene(src: THREE.Object3D, shadows = true) {
   const root = src.clone(true);
   root.traverse((obj) => {
     const mesh = obj as THREE.Mesh;
     if (!mesh.isMesh) return;
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
+    mesh.castShadow = shadows;
+    mesh.receiveShadow = shadows;
+    mesh.frustumCulled = true;
     const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     mesh.material = mats.map((m) => {
       const mat = (m as THREE.MeshStandardMaterial).clone();
       mat.metalness = 0;
       if (mat.map) {
         mat.map.colorSpace = THREE.SRGBColorSpace;
-        mat.map.anisotropy = 4;
+        mat.map.anisotropy = 2;
       }
       if (mat.alphaTest > 0 || /leaf|grass|bush|leaves/i.test(mat.name)) {
         mat.alphaTest = 0.35;
@@ -77,14 +78,19 @@ function prepareScene(src: THREE.Object3D) {
 
 function Scattered({ kind, items }: { kind: Prop["kind"]; items: Prop[] }) {
   const { scene } = useGLTF(KIND_URL[kind]);
-  const template = useMemo(() => prepareScene(scene), [scene]);
+  const shadows = !kind.startsWith("Grass") && !kind.startsWith("RockPath");
+  const template = useMemo(() => prepareScene(scene, shadows), [scene, shadows]);
   const placed = items.filter((p) => p.kind === kind);
+  const clones = useMemo(
+    () => placed.map(() => template.clone(true)),
+    [template, placed.length],
+  );
   return (
     <group>
       {placed.map((p, i) => (
         <primitive
           key={`${kind}-${i}`}
-          object={template.clone(true)}
+          object={clones[i]}
           position={[p.x, 0, p.z]}
           rotation={[0, p.rot, 0]}
           scale={p.scale}
@@ -212,8 +218,14 @@ function KnockGroup({
     [id],
   );
 
+  const tagged = useRef(false);
+
   useFrame((_, dtRaw) => {
     const dt = Math.min(dtRaw, 0.05);
+    if (!tagged.current && pivot.current) {
+      pivot.current.traverse((o) => o.layers.enable(1));
+      tagged.current = true;
+    }
     if (!down.current) return;
     spin.current += 22 * dt;
     ang.current = Math.min(Math.PI / 2, ang.current + spin.current * dt);
@@ -328,12 +340,12 @@ export function World() {
         position={[16, 28, 10]}
         intensity={0.78}
         castShadow
-        shadow-mapSize={[2048, 2048]}
-        shadow-camera-far={80}
-        shadow-camera-left={-36}
-        shadow-camera-right={36}
-        shadow-camera-top={36}
-        shadow-camera-bottom={-36}
+        shadow-mapSize={[1024, 1024]}
+        shadow-camera-far={55}
+        shadow-camera-left={-22}
+        shadow-camera-right={22}
+        shadow-camera-top={22}
+        shadow-camera-bottom={-22}
         color="#e8ece8"
       />
       <fog attach="fog" args={["#8b97a0", 42, 95]} />

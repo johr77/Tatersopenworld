@@ -100,25 +100,24 @@ function scatter(
 }
 
 export const TREES: Prop[] = [
-  ...scatter(10, -28, -7, -28, 22, "CommonTree_1", 1.2, 0.55),
-  ...scatter(8, 7, 28, -28, 22, "CommonTree_1", 1.15, 0.55),
-  ...scatter(8, -26, -8, -24, 20, "CommonTree_3", 1.05, 0.5),
-  ...scatter(7, 8, 26, -24, 20, "CommonTree_3", 1.0, 0.5),
-  ...scatter(8, -30, -10, -26, 24, "Pine_1", 1.25, 0.48),
-  ...scatter(8, 10, 30, -26, 24, "Pine_1", 1.22, 0.48),
-  ...scatter(6, -24, -6, -30, -18, "CommonTree_5", 1.1, 0.5),
-  ...scatter(6, 6, 24, -30, -18, "CommonTree_5", 1.08, 0.5),
-  ...scatter(5, -22, 22, 16, 30, "CommonTree_1", 1.3, 0.55),
+  ...scatter(6, -26, -7, -26, 20, "CommonTree_1", 1.2, 0.55),
+  ...scatter(6, 7, 26, -26, 20, "CommonTree_1", 1.15, 0.55),
+  ...scatter(5, -24, -8, -22, 18, "CommonTree_3", 1.05, 0.5),
+  ...scatter(5, 8, 24, -22, 18, "CommonTree_3", 1.0, 0.5),
+  ...scatter(5, -28, -10, -24, 22, "Pine_1", 1.25, 0.48),
+  ...scatter(5, 10, 28, -24, 22, "Pine_1", 1.22, 0.48),
+  ...scatter(4, -22, -6, -28, -16, "CommonTree_5", 1.1, 0.5),
+  ...scatter(4, 6, 22, -28, -16, "CommonTree_5", 1.08, 0.5),
 ];
 
 export const BUSHES: Prop[] = [
-  ...scatter(12, -20, -5, -18, 16, "Bush_Common", 1.35, 0.32),
-  ...scatter(12, 5, 20, -18, 16, "Bush_Common", 1.3, 0.32),
+  ...scatter(8, -18, -5, -16, 14, "Bush_Common", 1.35, 0.32),
+  ...scatter(8, 5, 18, -16, 14, "Bush_Common", 1.3, 0.32),
 ];
 
 export const GRASS: Prop[] = [
-  ...scatter(22, -16, 16, -16, 16, "Grass_Common_Tall", 1.45, 0, false),
-  ...scatter(20, -18, 18, -18, 18, "Grass_Common_Short", 1.35, 0, false),
+  ...scatter(8, -14, 14, -14, 14, "Grass_Common_Tall", 1.45, 0, false),
+  ...scatter(8, -16, 16, -16, 16, "Grass_Common_Short", 1.35, 0, false),
 ];
 
 export const ROCKS: Prop[] = [
@@ -139,8 +138,8 @@ const pathKinds: PropKind[] = [
 
 export const PATH_STONES: Prop[] = (() => {
   const out: Prop[] = [];
-  for (let i = 0; i < 28; i++) {
-    const z = 16 - i * 1.35;
+  for (let i = 0; i < 14; i++) {
+    const z = 14 - i * 2.2;
     const x = Math.sin(i * 0.37) * 0.45;
     const kind = pathKinds[i % pathKinds.length];
     out.push({
@@ -151,16 +150,6 @@ export const PATH_STONES: Prop[] = (() => {
       scale: kind.includes("Wide") ? 1.15 : 0.95 + rand() * 0.25,
       radius: 0,
     });
-    if (i % 2 === 0) {
-      out.push({
-        kind: pathKinds[(i + 2) % pathKinds.length],
-        x: x + (rand() > 0.5 ? 1.15 : -1.15),
-        z: z + (rand() - 0.5) * 0.4,
-        rot: rand() * Math.PI * 2,
-        scale: 0.75 + rand() * 0.2,
-        radius: 0,
-      });
-    }
   }
   return out;
 })();

@@ -37,7 +37,7 @@ export function GameCanvas() {
         <Canvas
           camera={{ fov: 70, position: [0, 1.6, 14], near: 0.08, far: 140 }}
           shadows
-          dpr={[1, 1.5]}
+          dpr={[1, 1.25]}
           gl={{ antialias: true, powerPreference: "high-performance" }}
           onCreated={({ gl }) => {
             gl.setClearColor("#8b97a0");

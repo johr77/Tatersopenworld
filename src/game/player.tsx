@@ -9,7 +9,7 @@ import { consumeLook, edges, initInput, mouse, sampleActions, setForcedKeys, set
 import { gameState } from "./state";
 import { playEmpty, playGunshot, playImpact } from "./audio";
 import { resolveCircle } from "./world-data";
-import { attachWeapons, makeViewmodel, WEAPONS, type WeaponHandle } from "./weapon";
+import { attachWeapons, WEAPONS, type WeaponHandle } from "./weapon";
 import { type LookId } from "./profiles";
 
 useGLTF.preload("/models/character.glb");
@@ -155,6 +155,10 @@ export function Player() {
     [body, maleGltf.animations],
   );
   const plantBox = useRef(new THREE.Box3());
+  const footLift = useRef(0);
+  const headBone = useRef<THREE.Object3D | null>(null);
+  const lastFov = useRef(70);
+  const lastNear = useRef(0.08);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -205,17 +209,15 @@ export function Player() {
     controller.lower.play(CLIP.idle, 0);
     controller.upper.play(CLIP.idle, 0);
     controller.mixer.update(0);
+    body.updateMatrixWorld(true);
+    plantBox.current.setFromObject(body);
+    footLift.current = Number.isFinite(plantBox.current.min.y) ? -plantBox.current.min.y : 0;
+    headBone.current = body.getObjectByName("Head") ?? null;
 
     weapons.current?.dispose();
     const hand = body.getObjectByName("hand_r");
     weapons.current = hand ? attachWeapons(hand) : null;
     weapons.current?.setId(WEAPONS[weaponI.current].id);
-
-    if (!viewmodel.current) {
-      const vm = makeViewmodel();
-      viewmodel.current = vm;
-      camera.add(vm.root);
-    }
 
     window.__controlsTest = {
       getYaw: () => yaw.current,
@@ -423,6 +425,7 @@ export function Player() {
         shootHold.current = 0.28;
         playGunshot(def.id);
         controller.upper.play(CLIP.shoot, 0.04);
+        ray.current.layers.set(1);
         ray.current.setFromCamera(ndc.current, camera);
         const hits = ray.current.intersectObjects(scene.children, true);
         const hit = hits.find((h) => {
@@ -456,8 +459,8 @@ export function Player() {
     const moving = xz > 0.35 && grounded.current;
     const fps = view.current === "fps";
     weapons.current?.setLowered(!aiming && shootHold.current <= 0);
-    viewmodel.current?.setLowered(!aiming && shootHold.current <= 0);
 
+    let loco = CLIP.idle;
     if (!grounded.current) {
       controller.lower.setBackpedal(false);
       if (controller.lower.current === CLIP.jumpStart) {
@@ -467,12 +470,13 @@ export function Player() {
         controller.lower.play(CLIP.jumpLoop, 0.1);
       }
     } else {
-      if (wantCrouch && moving) controller.lower.play(CLIP.crouchWalk);
-      else if (wantCrouch) controller.lower.play(CLIP.crouchIdle);
-      else if (actions.sprint && moving && actions.moveY > 0.2) controller.lower.play(CLIP.sprint);
-      else if (moving && xz > 4.2) controller.lower.play(CLIP.jog);
-      else if (moving) controller.lower.play(CLIP.walk);
-      else controller.lower.play(CLIP.idle);
+      if (wantCrouch && moving) loco = CLIP.crouchWalk;
+      else if (wantCrouch) loco = CLIP.crouchIdle;
+      else if (actions.sprint && moving && actions.moveY > 0.2) loco = CLIP.sprint;
+      else if (moving && xz > 4.2) loco = CLIP.jog;
+      else if (moving) loco = CLIP.walk;
+      else loco = CLIP.idle;
+      controller.lower.play(loco);
       controller.lower.setBackpedal(moving && actions.moveY < -0.12);
     }
 
@@ -480,7 +484,10 @@ export function Player() {
     else if (shootHold.current > 0) controller.upper.play(CLIP.shoot, 0.05);
     else if (aiming) controller.upper.play(CLIP.aim, 0.1);
     else if (fps) controller.upper.play(CLIP.pistolIdle, 0.12);
-    else controller.upper.play(CLIP.idle, 0.14);
+    else {
+      controller.upper.play(grounded.current ? loco : CLIP.idle, 0.14);
+      controller.upper.setBackpedal(moving && actions.moveY < -0.12);
+    }
 
     const lowerLabel = controller.lower.current.replaceAll("_", " ").replace(/ Loop$/, "");
     const upperLabel = controller.upper.current.replaceAll("_", " ").replace(/ Loop$/, "");
@@ -505,37 +512,31 @@ export function Player() {
       camPos.current.set(pos.current.x, pos.current.y + 1.7, pos.current.z + 4.2);
     }
     const bodyYaw = inMenu ? 0 : yaw.current + Math.PI;
-    body.position.copy(pos.current);
+    body.position.set(pos.current.x, pos.current.y + footLift.current, pos.current.z);
     body.rotation.order = "YXZ";
     body.rotation.y = bodyYaw;
-    body.updateMatrixWorld(true);
-    plantBox.current.setFromObject(body);
-    if (Number.isFinite(plantBox.current.min.y)) {
-      const lift = pos.current.y - plantBox.current.min.y;
-      if (Math.abs(lift) > 0.001) body.position.y += lift;
-    }
-    body.updateMatrixWorld(true);
 
-    const head = body.getObjectByName("Head");
+    const head = headBone.current;
     if (head) head.scale.setScalar(!inMenu && fps ? 0.01 : 1);
     body.visible = true;
-    if (weapons.current) weapons.current.root.visible = inMenu || !fps;
-    if (viewmodel.current) viewmodel.current.root.visible = !inMenu && fps;
+    if (weapons.current) weapons.current.root.visible = true;
+    if (viewmodel.current) viewmodel.current.root.visible = false;
     if (muzzle.current) muzzle.current.intensity = flash.current > 0 ? 18 : 0;
 
     const persp = camera as THREE.PerspectiveCamera;
+    let nextFov = 70;
+    let nextNear = 0.08;
     if (inMenu) {
       persp.position.set(pos.current.x + 2.15, 1.45, pos.current.z + 3.6);
       persp.lookAt(pos.current.x, 0.92, pos.current.z);
-      persp.fov = 38;
-      persp.near = 0.08;
-      persp.updateProjectionMatrix();
+      nextFov = 38;
     } else if (fps) {
       const eyePos = lookTarget.current;
       if (head) {
+        head.updateWorldMatrix(true, false);
         head.getWorldPosition(eyePos);
-        eyePos.y += 0.12;
-        eyePos.addScaledVector(fwd.current, -0.06);
+        eyePos.y += 0.05;
+        eyePos.addScaledVector(fwd.current, 0.1);
       } else {
         eyePos.set(pos.current.x, pos.current.y + eye.current + bobY, pos.current.z);
       }
@@ -544,9 +545,8 @@ export function Player() {
       persp.rotation.y = yaw.current;
       persp.rotation.x = pitch.current + recoil.current;
       persp.rotation.z = 0;
-      persp.fov = aiming ? 62 : 78;
-      persp.near = 0.13;
-      persp.updateProjectionMatrix();
+      nextFov = aiming ? 62 : 78;
+      nextNear = 0.1;
     } else {
       const dist = 3.6;
       const height = 1.55;
@@ -564,9 +564,14 @@ export function Player() {
       lookTarget.current.addScaledVector(camFwd.current, 2.4);
       lookTarget.current.y += Math.sin(lookPitch) * 2.2;
       persp.lookAt(lookTarget.current);
-      persp.fov = 70;
-      persp.near = 0.08;
+      nextFov = 70;
+    }
+    if (persp.fov !== nextFov || persp.near !== nextNear) {
+      persp.fov = nextFov;
+      persp.near = nextNear;
       persp.updateProjectionMatrix();
+      lastFov.current = nextFov;
+      lastNear.current = nextNear;
     }
 
     gameState.yaw = yaw.current;
