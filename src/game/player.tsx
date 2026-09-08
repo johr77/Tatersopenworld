@@ -210,6 +210,7 @@ export function Player() {
   const lastNear = useRef(0.08);
   const landHold = useRef(0);
   const stickLookLatch = useRef(false);
+  const alignCam = useRef(false);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -293,6 +294,9 @@ export function Player() {
         yaw.current = y;
         pitch.current = p;
       },
+      setAlign: (v: boolean) => {
+        alignCam.current = v;
+      },
       getWeapon: () => gameState.weapon,
       setSlot: (i: number) => {
         weaponI.current = i;
@@ -346,6 +350,8 @@ export function Player() {
     const dt = Math.min(dtRaw, 0.05);
     const actions = sampleActions();
     if (edges.toggleView) view.current = view.current === "fps" ? "third" : "fps";
+    if (edges.alignCam) alignCam.current = !alignCam.current;
+    if (view.current === "fps") alignCam.current = false;
     let nextSlot = weaponI.current;
     if (actions.weaponSlot !== null) nextSlot = actions.weaponSlot;
     else if (edges.nextWeapon) nextSlot = (weaponI.current + 1) % WEAPONS.length;
@@ -383,7 +389,7 @@ export function Player() {
     }
 
     if (stickHeld) stickLookLatch.current = true;
-    if (third && !aiming && !stickHeld && stickLookLatch.current) {
+    if (third && !aiming && !alignCam.current && !stickHeld && stickLookLatch.current) {
       pitch.current = THREE.MathUtils.damp(pitch.current, 0, 8, dt);
       if (Math.abs(pitch.current) < 0.025) {
         pitch.current = 0;
@@ -611,10 +617,13 @@ export function Player() {
       persp.rotation.z = 0;
       nextFov = aiming ? 62 : 78;
       nextNear = 0.14;
+      wish.current.set(0, 0, -8).applyEuler(persp.rotation);
+      lookTarget.current.copy(eyePos).add(wish.current);
     } else {
-      const dist = 3.6;
-      const height = 1.55;
-      const shoulder = 0.55;
+      const zoom = alignCam.current;
+      const dist = zoom ? 1.7 : 3.6;
+      const height = zoom ? 1.48 : 1.55;
+      const shoulder = zoom ? 0.2 : 0.55;
       const desired = wish.current;
       desired.set(-ly, 0, -lc).multiplyScalar(-dist);
       desired.x += lc * shoulder;
@@ -625,11 +634,13 @@ export function Player() {
       persp.position.copy(camPos.current);
       lookTarget.current.copy(pos.current);
       lookTarget.current.y += eye.current * 0.85;
-      lookTarget.current.addScaledVector(camFwd.current, 2.4);
-      lookTarget.current.y += Math.sin(lookPitch) * 2.2;
+      lookTarget.current.addScaledVector(camFwd.current, zoom ? 6 : 2.4);
+      lookTarget.current.y += Math.sin(lookPitch) * (zoom ? 5.5 : 2.2);
       persp.lookAt(lookTarget.current);
-      nextFov = 70;
+      nextFov = zoom ? 44 : 70;
     }
+    if (aiming || fps) weapons.current?.aimAt(lookTarget.current);
+    else weapons.current?.aimAt(null);
     if (persp.fov !== nextFov || persp.near !== nextNear) {
       persp.fov = nextFov;
       persp.near = nextNear;
@@ -648,6 +659,7 @@ export function Player() {
     gameState.sprinting = actions.sprint && moving && !wantCrouch;
     gameState.aiming = aiming;
     gameState.view = view.current;
+    gameState.alignCam = alignCam.current;
     gameState.ammo = ammo.current;
     gameState.reserve = reserve.current;
     gameState.reloading = reloadT.current > 0;

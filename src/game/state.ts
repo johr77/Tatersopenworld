@@ -19,6 +19,7 @@ export const gameState = {
   sprinting: false,
   aiming: false,
   view: "third" as ViewMode,
+  alignCam: false,
   ammo: 30,
   magSize: 30,
   reserve: 90,
@@ -47,6 +48,7 @@ declare global {
       setSteer?: (v: number) => void;
       setView?: (mode: "fps" | "third") => void;
       setLook?: (yaw: number, pitch: number) => void;
+      setAlign?: (v: boolean) => void;
       getWeapon?: () => string;
       setSlot?: (i: number) => void;
       getLook?: () => string;

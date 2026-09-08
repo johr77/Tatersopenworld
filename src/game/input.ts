@@ -15,6 +15,7 @@ export type ActionId =
   | "reload"
   | "toggleView"
   | "freeLook"
+  | "alignCam"
   | "menu"
   | "nextWeapon"
   | "prevWeapon";
@@ -34,6 +35,7 @@ export const ACTION_LABELS: Record<ActionId, string> = {
   reload: "Reload",
   toggleView: "Toggle view",
   freeLook: "Free look",
+  alignCam: "Align camera",
   menu: "Options",
   nextWeapon: "Next weapon",
   prevWeapon: "Prev weapon",
@@ -70,13 +72,14 @@ export const DEFAULT_BINDINGS: Record<ActionId, Binding> = {
   aim: { keys: [], buttons: [6] },
   reload: { keys: ["KeyR"], buttons: [2] },
   toggleView: { keys: ["KeyV"], buttons: [3] },
-  freeLook: { keys: ["AltLeft", "AltRight", "KeyQ"], buttons: [11] },
+  freeLook: { keys: ["AltLeft", "AltRight", "KeyQ"], buttons: [] },
+  alignCam: { keys: ["KeyZ"], buttons: [11] },
   menu: { keys: ["Tab"], buttons: [9] },
   nextWeapon: { keys: ["BracketRight", "Period"], buttons: [15, 12, 4] },
   prevWeapon: { keys: ["BracketLeft", "Comma"], buttons: [14, 13] },
 };
 
-const STORAGE = "taters.binds.v2";
+const STORAGE = "taters.binds.v3";
 
 export const settings = {
   bindings: structuredClone(DEFAULT_BINDINGS) as Record<ActionId, Binding>,
@@ -389,6 +392,7 @@ export type Actions = {
   reload: boolean;
   toggleView: boolean;
   freeLook: boolean;
+  alignCam: boolean;
   menu: boolean;
   weaponSlot: number | null;
   nextWeapon: boolean;
@@ -403,6 +407,7 @@ const prev = {
   fire: false,
   reload: false,
   toggleView: false,
+  alignCam: false,
   menu: false,
   nextWeapon: false,
   prevWeapon: false,
@@ -413,6 +418,7 @@ export const edges = {
   fire: false,
   reload: false,
   toggleView: false,
+  alignCam: false,
   menu: false,
   nextWeapon: false,
   prevWeapon: false,
@@ -474,6 +480,7 @@ export function sampleActions(): Actions {
   const reload = !blocked && actionDown("reload", pad);
   const toggleView = !blocked && actionDown("toggleView", pad);
   const freeLook = !blocked && actionDown("freeLook", pad);
+  const alignCam = !blocked && actionDown("alignCam", pad);
   const menu = actionDown("menu", pad);
   let weaponSlot: number | null = null;
   if (!blocked) {
@@ -489,6 +496,7 @@ export function sampleActions(): Actions {
   edges.fire = fire && !prev.fire;
   edges.reload = reload && !prev.reload;
   edges.toggleView = toggleView && !prev.toggleView;
+  edges.alignCam = alignCam && !prev.alignCam;
   edges.menu = menu && !prev.menu;
   edges.nextWeapon = nextHeld && !prev.nextWeapon;
   edges.prevWeapon = prevHeld && !prev.prevWeapon;
@@ -496,6 +504,7 @@ export function sampleActions(): Actions {
   prev.fire = fire;
   prev.reload = reload;
   prev.toggleView = toggleView;
+  prev.alignCam = alignCam;
   prev.menu = menu;
   prev.nextWeapon = nextHeld;
   prev.prevWeapon = prevHeld;
@@ -511,6 +520,7 @@ export function sampleActions(): Actions {
     reload,
     toggleView,
     freeLook,
+    alignCam,
     menu,
     weaponSlot,
     nextWeapon: nextHeld,

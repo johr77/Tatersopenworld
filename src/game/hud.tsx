@@ -45,6 +45,7 @@ const BIND_ROWS: ActionId[] = [
   "reload",
   "toggleView",
   "freeLook",
+  "alignCam",
   "nextWeapon",
   "prevWeapon",
   "menu",
@@ -683,7 +684,9 @@ export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | nul
             </div>
             <div className="hud-chip">
               <span className="hud-label">View</span>
-              <span className="hud-value">{gameState.view === "fps" ? "Sights" : "Character"}</span>
+              <span className="hud-value">
+                {gameState.alignCam ? "Align" : gameState.view === "fps" ? "Sights" : "Character"}
+              </span>
             </div>
             <div className="hud-chip">
               <span className="hud-label">Hits</span>

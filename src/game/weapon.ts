@@ -145,6 +145,7 @@ export type WeaponHandle = {
   root: THREE.Group;
   setId: (id: WeaponId) => void;
   setLowered: (low: boolean) => void;
+  aimAt: (target: THREE.Vector3 | null) => void;
   children: () => number;
   dispose: () => void;
 };
@@ -163,12 +164,17 @@ function fill(parent: THREE.Group) {
   return { slots, ready };
 }
 
+const _dir = new THREE.Vector3();
+const _worldQ = new THREE.Quaternion();
+const _parentQ = new THREE.Quaternion();
+const _negZ = new THREE.Vector3(0, 0, -1);
+
 export function attachWeapons(hand: THREE.Object3D): WeaponHandle {
   const root = new THREE.Group();
   root.name = "WeaponHold";
   hand.add(root);
-  // hand_r +Y = fingers. Gun barrel is −Z, so Rx(90) aims along the hand.
-  const restPos = new THREE.Vector3(0.02, 0.1, 0.02);
+  // Palm of hand_r. Hold −Z is the barrel; Rx(90) maps that along the fingers (+Y).
+  const restPos = new THREE.Vector3(0.0, 0.045, 0.012);
   const restRot = new THREE.Euler(Math.PI / 2, 0, 0);
   root.position.copy(restPos);
   root.rotation.copy(restRot);
@@ -189,6 +195,26 @@ export function attachWeapons(hand: THREE.Object3D): WeaponHandle {
     setLowered: () => {
       root.position.copy(restPos);
       root.rotation.copy(restRot);
+    },
+    aimAt: (target) => {
+      root.position.copy(restPos);
+      if (!target) {
+        root.rotation.copy(restRot);
+        return;
+      }
+      const parent = root.parent;
+      if (!parent) return;
+      parent.updateWorldMatrix(true, false);
+      parent.localToWorld(_dir.copy(restPos));
+      _dir.set(target.x - _dir.x, target.y - _dir.y, target.z - _dir.z);
+      if (_dir.lengthSq() < 0.0001) {
+        root.rotation.copy(restRot);
+        return;
+      }
+      _dir.normalize();
+      _worldQ.setFromUnitVectors(_negZ, _dir);
+      parent.getWorldQuaternion(_parentQ);
+      root.quaternion.copy(_parentQ.invert()).multiply(_worldQ);
     },
     children: () => root.children.length,
     dispose: () => {
@@ -224,6 +250,7 @@ export function makeViewmodel(): WeaponHandle {
       root.position.copy(low ? hipPos : adsPos);
       root.rotation.copy(low ? hipRot : adsRot);
     },
+    aimAt: () => {},
     children: () => root.children.length,
     dispose: () => {
       root.removeFromParent();
