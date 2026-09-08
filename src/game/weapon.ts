@@ -18,14 +18,16 @@ export type WeaponDef = {
   drop: number;
   /** Hand-local hold: −X into palm, +Y along fingers, +Z thumb. */
   hold: [number, number, number];
+  /** Extra Euler XYZ on the hold (radians). Base is Rx(90) so barrel follows the fingers. */
+  holdRot: [number, number, number];
   obj: string;
   mtl: string;
 };
 
 export const WEAPONS: WeaponDef[] = [
-  { id: "pistol", name: "Pistol", mag: 12, reserve: 36, fireCd: 0.15, reload: 1.35, recoil: 0.038, length: 0.26, gripBack: 0.055, drop: 0.012, hold: [-0.074, 0.108, 0.026], obj: "/models/weapon/quaternius/Pistol_1.obj", mtl: "/models/weapon/quaternius/Pistol_1.mtl" },
-  { id: "ar", name: "Rifle", mag: 30, reserve: 90, fireCd: 0.1, reload: 2.05, recoil: 0.032, length: 0.78, gripBack: 0.30, drop: 0.02, hold: [-0.055, 0.132, 0.028], obj: "/models/weapon/quaternius/AssaultRifle_1.obj", mtl: "/models/weapon/quaternius/AssaultRifle_1.mtl" },
-  { id: "shotgun", name: "Shotgun", mag: 6, reserve: 24, fireCd: 0.55, reload: 2.4, recoil: 0.07, length: 0.72, gripBack: 0.27, drop: 0.016, hold: [-0.055, 0.132, 0.028], obj: "/models/weapon/quaternius/Shotgun_1.obj", mtl: "/models/weapon/quaternius/Shotgun_1.mtl" },
+  { id: "pistol", name: "Pistol", mag: 12, reserve: 36, fireCd: 0.15, reload: 1.35, recoil: 0.038, length: 0.26, gripBack: 0.055, drop: 0.012, hold: [-0.074, 0.108, 0.026], holdRot: [Math.PI / 2, -0.55, 0], obj: "/models/weapon/quaternius/Pistol_1.obj", mtl: "/models/weapon/quaternius/Pistol_1.mtl" },
+  { id: "ar", name: "Rifle", mag: 30, reserve: 90, fireCd: 0.1, reload: 2.05, recoil: 0.032, length: 0.78, gripBack: 0.30, drop: 0.02, hold: [-0.055, 0.132, 0.028], holdRot: [Math.PI / 2, 0, 0], obj: "/models/weapon/quaternius/AssaultRifle_1.obj", mtl: "/models/weapon/quaternius/AssaultRifle_1.mtl" },
+  { id: "shotgun", name: "Shotgun", mag: 6, reserve: 24, fireCd: 0.55, reload: 2.4, recoil: 0.07, length: 0.72, gripBack: 0.27, drop: 0.016, hold: [-0.055, 0.132, 0.028], holdRot: [Math.PI / 2, 0, 0], obj: "/models/weapon/quaternius/Shotgun_1.obj", mtl: "/models/weapon/quaternius/Shotgun_1.mtl" },
 ];
 
 function fallbackGun(length: number) {
@@ -179,16 +181,15 @@ export function attachWeapons(hand: THREE.Object3D): WeaponHandle {
   const root = new THREE.Group();
   root.name = "WeaponHold";
   hand.add(root);
-  const restRot = new THREE.Euler(Math.PI / 2, 0, 0);
-  root.rotation.copy(restRot);
-
   const { slots, ready } = fill(root);
   let current: WeaponId = "ar";
-  const holdOf = (id: WeaponId) => WEAPONS.find((w) => w.id === id)?.hold ?? WEAPONS[1].hold;
+  const holdOf = (id: WeaponId) => WEAPONS.find((w) => w.id === id) ?? WEAPONS[1];
   const applyHold = () => {
-    const h = holdOf(current);
+    const def = holdOf(current);
+    const h = def.hold;
+    const r = def.holdRot;
     root.position.set(h[0], h[1], h[2]);
-    root.rotation.copy(restRot);
+    root.rotation.set(r[0], r[1], r[2]);
   };
   applyHold();
   const show = (id: WeaponId) => {
