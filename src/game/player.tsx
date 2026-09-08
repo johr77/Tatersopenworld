@@ -152,8 +152,9 @@ function makeController(root: THREE.Object3D, clips: THREE.AnimationClip[]) {
         }
       }
       const t = THREE.MathUtils.clamp(pitch / 1.15, -1, 1);
-      const wDown = Math.max(0, t);
-      const wUp = Math.max(0, -t);
+      // pitch > 0 is look up (mouse up raises the crosshair).
+      const wUp = Math.max(0, t);
+      const wDown = Math.max(0, -t);
       aimDown.setEffectiveWeight(wDown);
       aimNeu.setEffectiveWeight(1 - wDown - wUp);
       aimUp.setEffectiveWeight(wUp);
@@ -208,8 +209,6 @@ export function Player() {
   const lastFov = useRef(70);
   const lastNear = useRef(0.08);
   const landHold = useRef(0);
-  const headQuat = useRef(new THREE.Quaternion());
-  const headUp = useRef(new THREE.Vector3());
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -577,9 +576,8 @@ export function Player() {
     body.rotation.y = bodyYaw;
 
     const head = headBone.current;
-    if (head) head.scale.setScalar(1);
+    if (head) head.scale.setScalar(!inMenu && fps ? 0.01 : 1);
     body.visible = true;
-    body.updateMatrixWorld(true);
     if (weapons.current) weapons.current.root.visible = true;
     if (viewmodel.current) viewmodel.current.root.visible = false;
     if (muzzle.current) muzzle.current.intensity = flash.current > 0 ? 18 : 0;
@@ -593,27 +591,14 @@ export function Player() {
       nextFov = 38;
     } else if (fps) {
       const eyePos = lookTarget.current;
-      if (head) {
-        head.getWorldPosition(eyePos);
-        head.getWorldQuaternion(headQuat.current);
-        camFwd.current.set(0, 0, -1).applyQuaternion(headQuat.current);
-        headUp.current.set(0, 1, 0).applyQuaternion(headQuat.current);
-        eyePos.addScaledVector(headUp.current, 0.04);
-        eyePos.addScaledVector(camFwd.current, 0.18);
-        persp.position.copy(eyePos);
-        wish.current.copy(eyePos).addScaledVector(camFwd.current, 4);
-        wish.current.addScaledVector(headUp.current, -(recoil.current) * 4);
-        persp.lookAt(wish.current);
-      } else {
-        eyePos.set(pos.current.x, pos.current.y + eye.current + bobY, pos.current.z);
-        persp.position.copy(eyePos);
-        persp.rotation.order = "YXZ";
-        persp.rotation.y = yaw.current;
-        persp.rotation.x = pitch.current + recoil.current;
-        persp.rotation.z = 0;
-      }
+      eyePos.set(pos.current.x, pos.current.y + eye.current + bobY, pos.current.z);
+      persp.position.copy(eyePos);
+      persp.rotation.order = "YXZ";
+      persp.rotation.y = yaw.current;
+      persp.rotation.x = -(pitch.current + recoil.current);
+      persp.rotation.z = 0;
       nextFov = aiming ? 62 : 78;
-      nextNear = 0.16;
+      nextNear = 0.14;
     } else {
       const dist = 3.6;
       const height = 1.55;
