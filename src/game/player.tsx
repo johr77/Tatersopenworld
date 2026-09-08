@@ -21,8 +21,8 @@ const CROUCH_SPEED = 1.7;
 const ACCEL = 22;
 const AIR_ACCEL = 6;
 const FRICTION = 12;
-const GRAVITY = 24;
-const JUMP_V = 7.2;
+const GRAVITY = 20;
+const JUMP_V = 9.0;
 const EYE_STAND = 1.62;
 const EYE_CROUCH = 1.05;
 const SENS = 0.00205;
@@ -42,6 +42,8 @@ const CLIP = {
   shoot: "Pistol_Shoot",
   reload: "Pistol_Reload",
   aim: "Pistol_Aim_Neutral",
+  aimUp: "Pistol_Aim_Up",
+  aimDown: "Pistol_Aim_Down",
   pistolIdle: "Pistol_Idle_Loop",
 };
 
@@ -50,7 +52,7 @@ type MixerAction = THREE.AnimationAction;
 const LOWER_RE = /^(root|pelvis|spine_01|thigh_|calf_|foot_|ball_)/;
 const LOCOMO = new Set([CLIP.walk, CLIP.jog, CLIP.sprint, CLIP.crouchWalk]);
 
-function makeLayer(map: Map<string, MixerAction>) {
+function makeLayer(map: Map<string, MixerAction>, onPlay?: () => void) {
   let current = "";
   let backpedal = false;
   const applyScale = () => {
@@ -63,6 +65,7 @@ function makeLayer(map: Map<string, MixerAction>) {
       return current;
     },
     play(name: string, fade = 0.16) {
+      onPlay?.();
       if (name === current) return;
       const next = map.get(name);
       if (!next) return;
@@ -71,6 +74,9 @@ function makeLayer(map: Map<string, MixerAction>) {
       prev?.fadeOut(fade);
       current = name;
       applyScale();
+    },
+    clear() {
+      current = "";
     },
     setBackpedal(back: boolean) {
       if (back === backpedal) return;
@@ -106,10 +112,52 @@ function makeController(root: THREE.Object3D, clips: THREE.AnimationClip[]) {
       upperActs.set(clip.name, a);
     }
   }
+
+  const aimDown = upperActs.get(CLIP.aimDown);
+  const aimNeu = upperActs.get(CLIP.aim);
+  const aimUp = upperActs.get(CLIP.aimUp);
+  let aimingBlend = false;
+
+  const stopAimBlend = () => {
+    if (!aimingBlend) return;
+    aimingBlend = false;
+    aimDown?.fadeOut(0.1);
+    aimNeu?.fadeOut(0.1);
+    aimUp?.fadeOut(0.1);
+  };
+
+  const lower = makeLayer(lowerActs);
+  const upper = makeLayer(upperActs, stopAimBlend);
+
   return {
     mixer,
-    lower: makeLayer(lowerActs),
-    upper: makeLayer(upperActs),
+    lower,
+    upper,
+    setAimPitch(pitch: number) {
+      if (!aimDown || !aimNeu || !aimUp) {
+        upper.play(CLIP.aim, 0.1);
+        return;
+      }
+      if (!aimingBlend) {
+        aimingBlend = true;
+        const prev = upper.current ? upperActs.get(upper.current) : undefined;
+        prev?.fadeOut(0.1);
+        upper.clear();
+        for (const a of [aimDown, aimNeu, aimUp]) {
+          a.enabled = true;
+          a.reset();
+          a.setLoop(THREE.LoopRepeat, Infinity);
+          a.setEffectiveWeight(0);
+          a.play();
+        }
+      }
+      const t = THREE.MathUtils.clamp(pitch / 1.15, -1, 1);
+      const wDown = Math.max(0, t);
+      const wUp = Math.max(0, -t);
+      aimDown.setEffectiveWeight(wDown);
+      aimNeu.setEffectiveWeight(1 - wDown - wUp);
+      aimUp.setEffectiveWeight(wUp);
+    },
   };
 }
 
@@ -159,6 +207,9 @@ export function Player() {
   const headBone = useRef<THREE.Object3D | null>(null);
   const lastFov = useRef(70);
   const lastNear = useRef(0.08);
+  const landHold = useRef(0);
+  const headQuat = useRef(new THREE.Quaternion());
+  const headUp = useRef(new THREE.Vector3());
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -379,14 +430,20 @@ export function Player() {
       grounded.current = false;
       coyote.current = 0;
       jumpBuf.current = 0;
+      landHold.current = 0;
       controller.lower.play(CLIP.jumpStart, 0.05);
+      controller.upper.play(CLIP.jumpStart, 0.05);
     }
 
     vy.current -= GRAVITY * dt;
     pos.current.y += vy.current * dt;
     if (pos.current.y <= 0) {
       pos.current.y = 0;
-      if (!grounded.current) controller.lower.play(CLIP.jumpLand, 0.05);
+      if (!grounded.current) {
+        controller.lower.play(CLIP.jumpLand, 0.05);
+        controller.upper.play(CLIP.jumpLand, 0.05);
+        landHold.current = 0.28;
+      }
       vy.current = 0;
       grounded.current = true;
     } else {
@@ -463,13 +520,13 @@ export function Player() {
     let loco = CLIP.idle;
     if (!grounded.current) {
       controller.lower.setBackpedal(false);
-      if (controller.lower.current === CLIP.jumpStart) {
-        const start = controller.lower.get(CLIP.jumpStart);
-        if (start && start.time > 0.22) controller.lower.play(CLIP.jumpLoop, 0.1);
-      } else if (controller.lower.current !== CLIP.jumpLoop && controller.lower.current !== CLIP.jumpStart) {
-        controller.lower.play(CLIP.jumpLoop, 0.1);
-      }
+      if (vy.current > 0.2) controller.lower.play(CLIP.jumpStart, 0.06);
+      else controller.lower.play(CLIP.jumpLoop, 0.1);
+    } else if (landHold.current > 0 && !moving) {
+      landHold.current = Math.max(0, landHold.current - dt);
+      controller.lower.play(CLIP.jumpLand, 0.05);
     } else {
+      landHold.current = 0;
       if (wantCrouch && moving) loco = CLIP.crouchWalk;
       else if (wantCrouch) loco = CLIP.crouchIdle;
       else if (actions.sprint && moving && actions.moveY > 0.2) loco = CLIP.sprint;
@@ -482,10 +539,13 @@ export function Player() {
 
     if (reloadT.current > 0) controller.upper.play(CLIP.reload, 0.08);
     else if (shootHold.current > 0) controller.upper.play(CLIP.shoot, 0.05);
-    else if (aiming) controller.upper.play(CLIP.aim, 0.1);
-    else if (fps) controller.upper.play(CLIP.pistolIdle, 0.12);
+    else if (aiming || fps) controller.setAimPitch(pitch.current + recoil.current);
+    else if (!grounded.current) {
+      if (vy.current > 0.2) controller.upper.play(CLIP.jumpStart, 0.06);
+      else controller.upper.play(CLIP.jumpLoop, 0.1);
+    } else if (landHold.current > 0 && !moving) controller.upper.play(CLIP.jumpLand, 0.05);
     else {
-      controller.upper.play(grounded.current ? loco : CLIP.idle, 0.14);
+      controller.upper.play(loco, 0.14);
       controller.upper.setBackpedal(moving && actions.moveY < -0.12);
     }
 
@@ -517,8 +577,9 @@ export function Player() {
     body.rotation.y = bodyYaw;
 
     const head = headBone.current;
-    if (head) head.scale.setScalar(!inMenu && fps ? 0.01 : 1);
+    if (head) head.scale.setScalar(1);
     body.visible = true;
+    body.updateMatrixWorld(true);
     if (weapons.current) weapons.current.root.visible = true;
     if (viewmodel.current) viewmodel.current.root.visible = false;
     if (muzzle.current) muzzle.current.intensity = flash.current > 0 ? 18 : 0;
@@ -533,20 +594,26 @@ export function Player() {
     } else if (fps) {
       const eyePos = lookTarget.current;
       if (head) {
-        head.updateWorldMatrix(true, false);
         head.getWorldPosition(eyePos);
-        eyePos.y += 0.05;
-        eyePos.addScaledVector(fwd.current, 0.1);
+        head.getWorldQuaternion(headQuat.current);
+        camFwd.current.set(0, 0, -1).applyQuaternion(headQuat.current);
+        headUp.current.set(0, 1, 0).applyQuaternion(headQuat.current);
+        eyePos.addScaledVector(headUp.current, 0.04);
+        eyePos.addScaledVector(camFwd.current, 0.18);
+        persp.position.copy(eyePos);
+        wish.current.copy(eyePos).addScaledVector(camFwd.current, 4);
+        wish.current.addScaledVector(headUp.current, -(recoil.current) * 4);
+        persp.lookAt(wish.current);
       } else {
         eyePos.set(pos.current.x, pos.current.y + eye.current + bobY, pos.current.z);
+        persp.position.copy(eyePos);
+        persp.rotation.order = "YXZ";
+        persp.rotation.y = yaw.current;
+        persp.rotation.x = pitch.current + recoil.current;
+        persp.rotation.z = 0;
       }
-      persp.position.copy(eyePos);
-      persp.rotation.order = "YXZ";
-      persp.rotation.y = yaw.current;
-      persp.rotation.x = pitch.current + recoil.current;
-      persp.rotation.z = 0;
       nextFov = aiming ? 62 : 78;
-      nextNear = 0.1;
+      nextNear = 0.16;
     } else {
       const dist = 3.6;
       const height = 1.55;
