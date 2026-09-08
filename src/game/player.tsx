@@ -206,11 +206,13 @@ export function Player() {
   const plantBox = useRef(new THREE.Box3());
   const footLift = useRef(0);
   const headBone = useRef<THREE.Object3D | null>(null);
+  const handBone = useRef<THREE.Object3D | null>(null);
   const lastFov = useRef(70);
   const lastNear = useRef(0.08);
   const landHold = useRef(0);
   const stickLookLatch = useRef(false);
   const alignCam = useRef(false);
+  const alignDist = useRef(0.7);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -265,9 +267,8 @@ export function Player() {
     plantBox.current.setFromObject(body);
     footLift.current = Number.isFinite(plantBox.current.min.y) ? -plantBox.current.min.y : 0;
     headBone.current = body.getObjectByName("Head") ?? null;
-
-    weapons.current?.dispose();
     const hand = body.getObjectByName("hand_r");
+    handBone.current = hand ?? null;
     weapons.current = hand ? attachWeapons(hand) : null;
     weapons.current?.setId(WEAPONS[weaponI.current].id);
 
@@ -296,6 +297,15 @@ export function Player() {
       },
       setAlign: (v: boolean) => {
         alignCam.current = v;
+        if (v) {
+          view.current = "third";
+          orbitYaw.current = -0.85;
+          orbitPitch.current = 0.22;
+          alignDist.current = 1.05;
+        } else {
+          orbitYaw.current = 0;
+          orbitPitch.current = 0;
+        }
       },
       getWeapon: () => gameState.weapon,
       setSlot: (i: number) => {
@@ -350,7 +360,18 @@ export function Player() {
     const dt = Math.min(dtRaw, 0.05);
     const actions = sampleActions();
     if (edges.toggleView) view.current = view.current === "fps" ? "third" : "fps";
-    if (edges.alignCam) alignCam.current = !alignCam.current;
+    if (edges.alignCam) {
+      alignCam.current = !alignCam.current;
+      if (alignCam.current) {
+        view.current = "third";
+        orbitYaw.current = -0.85;
+        orbitPitch.current = 0.22;
+        alignDist.current = 1.05;
+      } else {
+        orbitYaw.current = 0;
+        orbitPitch.current = 0;
+      }
+    }
     if (view.current === "fps") alignCam.current = false;
     let nextSlot = weaponI.current;
     if (actions.weaponSlot !== null) nextSlot = actions.weaponSlot;
@@ -373,8 +394,21 @@ export function Player() {
     const mouseSens = SENS * settings.mouseSens * (aiming ? 0.55 : 1);
     const stickRate = 2.35 * settings.stickSens;
     const stickHeld = Math.hypot(actions.lookStickX, actions.lookStickY) > 0.12;
+    const inspecting = alignCam.current;
 
-    if (third && actions.freeLook && mouse.locked) {
+    if (inspecting) {
+      if (mouse.locked) {
+        orbitYaw.current -= lookDelta.dx * mouseSens * 1.7;
+        orbitPitch.current -= lookDelta.dy * mouseSens * 1.7;
+      }
+      orbitYaw.current -= actions.lookStickX * 2.5 * dt;
+      orbitPitch.current -= actions.lookStickY * 2.1 * dt;
+      alignDist.current = THREE.MathUtils.clamp(
+        alignDist.current - actions.moveY * 1.35 * dt,
+        0.4,
+        2.4,
+      );
+    } else if (third && actions.freeLook && mouse.locked) {
       orbitYaw.current -= lookDelta.dx * mouseSens;
       orbitPitch.current -= lookDelta.dy * mouseSens;
     } else {
@@ -389,7 +423,7 @@ export function Player() {
     }
 
     if (stickHeld) stickLookLatch.current = true;
-    if (third && !aiming && !alignCam.current && !stickHeld && stickLookLatch.current) {
+    if (third && !aiming && !inspecting && !stickHeld && stickLookLatch.current) {
       pitch.current = THREE.MathUtils.damp(pitch.current, 0, 8, dt);
       if (Math.abs(pitch.current) < 0.025) {
         pitch.current = 0;
@@ -399,7 +433,9 @@ export function Player() {
     if (aiming) stickLookLatch.current = false;
 
     pitch.current = Math.max(-PITCH_LIM, Math.min(PITCH_LIM, pitch.current));
-    orbitPitch.current = Math.max(-0.9, Math.min(0.7, orbitPitch.current));
+    orbitPitch.current = inspecting
+      ? Math.max(-1.2, Math.min(1.2, orbitPitch.current))
+      : Math.max(-0.9, Math.min(0.7, orbitPitch.current));
 
     const lookYaw = yaw.current + orbitYaw.current;
     const lookPitch = Math.max(-PITCH_LIM, Math.min(PITCH_LIM, pitch.current + orbitPitch.current));
@@ -420,8 +456,13 @@ export function Player() {
         : WALK_SPEED;
 
     wish.current.copy(fwd.current).multiplyScalar(actions.moveY).addScaledVector(right.current, actions.moveX);
+    if (inspecting) wish.current.set(0, 0, 0);
     if (wish.current.lengthSq() > 1) wish.current.normalize();
 
+    if (inspecting) {
+      vel.current.x = 0;
+      vel.current.z = 0;
+    }
     const accel = grounded.current ? ACCEL : AIR_ACCEL;
     if (wish.current.lengthSq() > 0.0001) {
       vel.current.x += wish.current.x * accel * dt;
@@ -437,7 +478,7 @@ export function Player() {
       vel.current.z *= maxSpeed / sp;
     }
 
-    if (edges.jump) jumpBuf.current = 0.12;
+    if (edges.jump && !inspecting) jumpBuf.current = 0.12;
     else jumpBuf.current = Math.max(0, jumpBuf.current - dt);
     if (grounded.current) coyote.current = 0.12;
     else coyote.current = Math.max(0, coyote.current - dt);
@@ -619,11 +660,32 @@ export function Player() {
       nextNear = 0.14;
       wish.current.set(0, 0, -8).applyEuler(persp.rotation);
       lookTarget.current.copy(eyePos).add(wish.current);
+    } else if (alignCam.current) {
+      const hand = handBone.current;
+      if (hand) {
+        body.updateMatrixWorld(true);
+        lookTarget.current.set(0, 0.08, 0);
+        hand.localToWorld(lookTarget.current);
+      } else {
+        lookTarget.current.copy(pos.current);
+        lookTarget.current.y += 1.05;
+      }
+      const ay = orbitYaw.current;
+      const ap = orbitPitch.current;
+      const d = alignDist.current;
+      const cp = Math.cos(ap);
+      const desired = wish.current;
+      desired.set(Math.sin(ay) * cp * d, Math.sin(ap) * d, Math.cos(ay) * cp * d);
+      desired.add(lookTarget.current);
+      camPos.current.lerp(desired, 1 - Math.exp(-14 * dt));
+      persp.position.copy(camPos.current);
+      persp.lookAt(lookTarget.current);
+      nextFov = 34;
+      nextNear = 0.04;
     } else {
-      const zoom = alignCam.current;
-      const dist = zoom ? 1.7 : 3.6;
-      const height = zoom ? 1.48 : 1.55;
-      const shoulder = zoom ? 0.2 : 0.55;
+      const dist = 3.6;
+      const height = 1.55;
+      const shoulder = 0.55;
       const desired = wish.current;
       desired.set(-ly, 0, -lc).multiplyScalar(-dist);
       desired.x += lc * shoulder;
@@ -634,12 +696,12 @@ export function Player() {
       persp.position.copy(camPos.current);
       lookTarget.current.copy(pos.current);
       lookTarget.current.y += eye.current * 0.85;
-      lookTarget.current.addScaledVector(camFwd.current, zoom ? 6 : 2.4);
-      lookTarget.current.y += Math.sin(lookPitch) * (zoom ? 5.5 : 2.2);
+      lookTarget.current.addScaledVector(camFwd.current, 2.4);
+      lookTarget.current.y += Math.sin(lookPitch) * 2.2;
       persp.lookAt(lookTarget.current);
-      nextFov = zoom ? 44 : 70;
+      nextFov = 70;
     }
-    if (aiming || fps) weapons.current?.aimAt(lookTarget.current);
+    if (!alignCam.current && (aiming || fps)) weapons.current?.aimAt(lookTarget.current);
     else weapons.current?.aimAt(null);
     if (persp.fov !== nextFov || persp.near !== nextNear) {
       persp.fov = nextFov;
