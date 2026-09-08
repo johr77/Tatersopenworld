@@ -98,6 +98,17 @@ function collectBones(root: THREE.Object3D) {
   return map;
 }
 
+function resetBind(root: THREE.Object3D) {
+  root.traverse((o) => {
+    const mesh = o as THREE.SkinnedMesh;
+    if (mesh.isSkinnedMesh && mesh.skeleton) mesh.skeleton.pose();
+  });
+}
+
+function needsHead(look: LookId) {
+  return look === "male-peasant" || look === "female-peasant";
+}
+
 function pairBones(srcRoot: THREE.Object3D, dstRoot: THREE.Object3D) {
   const src = collectBones(srcRoot);
   const dst = collectBones(dstRoot);
@@ -154,6 +165,10 @@ export function Player() {
   const qDelta = useRef(new THREE.Quaternion());
   const posDelta = useRef(new THREE.Vector3());
   const plantBox = useRef(new THREE.Box3());
+  const clipPlane = useRef(new THREE.Plane(new THREE.Vector3(0, 1, 0), -1.5));
+  const neckPos = useRef(new THREE.Vector3());
+  const neckUp = useRef(new THREE.Vector3(0, 1, 0));
+  const headOnly = needsHead(look);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -197,11 +212,15 @@ export function Player() {
 
   useEffect(() => {
     initInput();
+    gl.localClippingEnabled = true;
+    controller.mixer.stopAllAction();
+    resetBind(ual);
+    if (look !== "mannequin") resetBind(skin);
+
     ual.visible = true;
     ual.traverse((o) => {
       const m = o as THREE.Mesh;
       if (!m.isMesh) return;
-      m.visible = true;
       m.castShadow = true;
       m.receiveShadow = true;
       m.frustumCulled = false;
@@ -210,6 +229,8 @@ export function Player() {
         const mat = raw as THREE.MeshStandardMaterial;
         if (mat.name === "M_Main") mat.color.set("#c9b89a");
         if (mat.name === "M_Joints") mat.color.set("#2f3b34");
+        mat.clippingPlanes = headOnly ? [clipPlane.current] : [];
+        mat.clipShadows = headOnly;
       }
     });
     if (look !== "mannequin") {
@@ -285,7 +306,7 @@ export function Player() {
       weapons.current?.dispose();
       weapons.current = null;
     };
-  }, [camera, controller, scene, skin, ual]);
+  }, [camera, controller, gl, headOnly, look, scene, skin, ual]);
 
   useEffect(() => {
     return () => {
@@ -509,7 +530,7 @@ export function Player() {
     const bobY = moving ? Math.sin(bob.current) * 0.035 : 0;
 
     const inMenu = !gameState.playing;
-    const bodyYaw = inMenu ? Math.PI + 0.32 : yaw.current + Math.PI;
+    const bodyYaw = inMenu ? 0.38 : yaw.current + Math.PI;
     ual.position.copy(pos.current);
     ual.rotation.order = "YXZ";
     ual.rotation.y = bodyYaw;
@@ -527,11 +548,20 @@ export function Player() {
         }
       }
     }
+    if (headOnly) {
+      const neck = ual.getObjectByName("neck_01") || ual.getObjectByName("Head");
+      if (neck) {
+        neck.getWorldPosition(neckPos.current);
+        neckPos.current.y -= 0.04;
+        clipPlane.current.setFromNormalAndCoplanarPoint(neckUp.current, neckPos.current);
+      }
+    }
     const showBody = inMenu || view.current === "third";
-    ual.visible = showBody;
+    const showUal = showBody && (isMannequin || headOnly);
+    ual.visible = showUal;
     ual.traverse((o) => {
       const m = o as THREE.Mesh;
-      if (m.isMesh) m.visible = showBody;
+      if (m.isMesh) m.visible = showUal;
     });
     if (!isMannequin) skin.visible = showBody;
     if (viewmodel.current) viewmodel.current.root.visible = !inMenu && view.current === "fps";
