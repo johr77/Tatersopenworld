@@ -299,9 +299,9 @@ export function Player() {
         alignCam.current = v;
         if (v) {
           view.current = "third";
-          orbitYaw.current = -0.85;
-          orbitPitch.current = 0.22;
-          alignDist.current = 1.05;
+          orbitYaw.current = 0.55;
+          orbitPitch.current = 0.18;
+          alignDist.current = 1.15;
         } else {
           orbitYaw.current = 0;
           orbitPitch.current = 0;
@@ -364,9 +364,9 @@ export function Player() {
       alignCam.current = !alignCam.current;
       if (alignCam.current) {
         view.current = "third";
-        orbitYaw.current = -0.85;
-        orbitPitch.current = 0.22;
-        alignDist.current = 1.05;
+        orbitYaw.current = 0.55;
+        orbitPitch.current = 0.18;
+        alignDist.current = 1.15;
       } else {
         orbitYaw.current = 0;
         orbitPitch.current = 0;

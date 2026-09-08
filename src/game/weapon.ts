@@ -13,14 +13,17 @@ export type WeaponDef = {
   reload: number;
   recoil: number;
   length: number;
+  /** Distance from the butt to the trigger, after the gun is scaled to `length`. */
+  gripBack: number;
+  drop: number;
   obj: string;
   mtl: string;
 };
 
 export const WEAPONS: WeaponDef[] = [
-  { id: "pistol", name: "Pistol", mag: 12, reserve: 36, fireCd: 0.15, reload: 1.35, recoil: 0.038, length: 0.26, obj: "/models/weapon/quaternius/Pistol_1.obj", mtl: "/models/weapon/quaternius/Pistol_1.mtl" },
-  { id: "ar", name: "Rifle", mag: 30, reserve: 90, fireCd: 0.1, reload: 2.05, recoil: 0.032, length: 0.78, obj: "/models/weapon/quaternius/AssaultRifle_1.obj", mtl: "/models/weapon/quaternius/AssaultRifle_1.mtl" },
-  { id: "shotgun", name: "Shotgun", mag: 6, reserve: 24, fireCd: 0.55, reload: 2.4, recoil: 0.07, length: 0.72, obj: "/models/weapon/quaternius/Shotgun_1.obj", mtl: "/models/weapon/quaternius/Shotgun_1.mtl" },
+  { id: "pistol", name: "Pistol", mag: 12, reserve: 36, fireCd: 0.15, reload: 1.35, recoil: 0.038, length: 0.26, gripBack: 0.055, drop: 0.012, obj: "/models/weapon/quaternius/Pistol_1.obj", mtl: "/models/weapon/quaternius/Pistol_1.mtl" },
+  { id: "ar", name: "Rifle", mag: 30, reserve: 90, fireCd: 0.1, reload: 2.05, recoil: 0.032, length: 0.78, gripBack: 0.30, drop: 0.02, obj: "/models/weapon/quaternius/AssaultRifle_1.obj", mtl: "/models/weapon/quaternius/AssaultRifle_1.mtl" },
+  { id: "shotgun", name: "Shotgun", mag: 6, reserve: 24, fireCd: 0.55, reload: 2.4, recoil: 0.07, length: 0.72, gripBack: 0.27, drop: 0.016, obj: "/models/weapon/quaternius/Shotgun_1.obj", mtl: "/models/weapon/quaternius/Shotgun_1.mtl" },
 ];
 
 function fallbackGun(length: number) {
@@ -60,8 +63,9 @@ function harden(root: THREE.Object3D) {
   });
 }
 
-/** Quaternius OBJ guns: barrel +X, up +Y, thin Z. Map barrel to camera-forward −Z. */
-function aimBarrelNegZ(obj: THREE.Object3D, length: number) {
+/** Quaternius OBJ guns: barrel +X, up +Y, thin Z. Map barrel to camera-forward −Z.
+ *  Origin is placed at the trigger so the hold can sit on the index finger. */
+function aimBarrelNegZ(obj: THREE.Object3D, length: number, gripBack: number, drop: number) {
   obj.rotation.set(0, Math.PI / 2, 0);
   obj.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(obj);
@@ -73,8 +77,8 @@ function aimBarrelNegZ(obj: THREE.Object3D, length: number) {
   obj.position.sub(box2.getCenter(new THREE.Vector3()));
   obj.updateMatrixWorld(true);
   const box3 = new THREE.Box3().setFromObject(obj);
-  obj.position.z += -box3.max.z + length * 0.12;
-  obj.position.y -= length * 0.04;
+  obj.position.z += -box3.max.z + gripBack;
+  obj.position.y -= drop;
 }
 
 function loadGun(def: WeaponDef): Promise<THREE.Object3D> {
@@ -93,7 +97,7 @@ function loadGun(def: WeaponDef): Promise<THREE.Object3D> {
           def.obj,
           (obj) => {
             harden(obj);
-            aimBarrelNegZ(obj, def.length);
+            aimBarrelNegZ(obj, def.length, def.gripBack, def.drop);
             wrap.add(obj);
             resolve(wrap);
           },
@@ -111,7 +115,7 @@ function loadGun(def: WeaponDef): Promise<THREE.Object3D> {
           def.obj,
           (obj) => {
             harden(obj);
-            aimBarrelNegZ(obj, def.length);
+            aimBarrelNegZ(obj, def.length, def.gripBack, def.drop);
             wrap.add(obj);
             resolve(wrap);
           },
@@ -173,8 +177,8 @@ export function attachWeapons(hand: THREE.Object3D): WeaponHandle {
   const root = new THREE.Group();
   root.name = "WeaponHold";
   hand.add(root);
-  // hand_r: +Y fingers, −X palm, +Z thumb. Knuckles sit at y≈0.12.
-  const restPos = new THREE.Vector3(-0.04, 0.068, 0.01);
+  // Trigger under index_02 (knuckle y≈0.12, pad y≈0.16, thumb-side z≈0.03).
+  const restPos = new THREE.Vector3(-0.055, 0.132, 0.028);
   const restRot = new THREE.Euler(Math.PI / 2, 0, 0);
   root.position.copy(restPos);
   root.rotation.copy(restRot);
