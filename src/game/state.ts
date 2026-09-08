@@ -46,6 +46,7 @@ declare global {
       setAim?: (v: boolean) => void;
       setSteer?: (v: number) => void;
       setView?: (mode: "fps" | "third") => void;
+      setLook?: (yaw: number, pitch: number) => void;
       getWeapon?: () => string;
       setSlot?: (i: number) => void;
       getLook?: () => string;
