@@ -173,8 +173,8 @@ export function attachWeapons(hand: THREE.Object3D): WeaponHandle {
   const root = new THREE.Group();
   root.name = "WeaponHold";
   hand.add(root);
-  // Palm of hand_r. Hold −Z is the barrel; Rx(90) maps that along the fingers (+Y).
-  const restPos = new THREE.Vector3(0.012, 0.13, -0.02);
+  // hand_r: +Y fingers, −X palm, +Z thumb. Knuckles sit at y≈0.12.
+  const restPos = new THREE.Vector3(-0.04, 0.068, 0.01);
   const restRot = new THREE.Euler(Math.PI / 2, 0, 0);
   root.position.copy(restPos);
   root.rotation.copy(restRot);
