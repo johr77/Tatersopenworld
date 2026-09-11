@@ -206,6 +206,7 @@ export function Player() {
   const plantBox = useRef(new THREE.Box3());
   const footLift = useRef(0);
   const headBone = useRef<THREE.Object3D | null>(null);
+  const neckBone = useRef<THREE.Object3D | null>(null);
   const handBone = useRef<THREE.Object3D | null>(null);
   const lastFov = useRef(70);
   const lastNear = useRef(0.08);
@@ -213,6 +214,7 @@ export function Player() {
   const stickLookLatch = useRef(false);
   const alignCam = useRef(false);
   const alignDist = useRef(0.7);
+  const adsBlend = useRef(0);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -267,8 +269,13 @@ export function Player() {
     plantBox.current.setFromObject(body);
     footLift.current = Number.isFinite(plantBox.current.min.y) ? -plantBox.current.min.y : 0;
     headBone.current = body.getObjectByName("Head") ?? null;
+    neckBone.current = body.getObjectByName("neck_01") ?? null;
     const hand = body.getObjectByName("hand_r");
     handBone.current = hand ?? null;
+    const hitHead = body.getObjectByName("Hit_Head");
+    const hitChest = body.getObjectByName("Hit_Chest");
+    if (hitHead) hitHead.visible = false;
+    if (hitChest) hitChest.visible = false;
     weapons.current = hand ? attachWeapons(hand) : null;
     weapons.current?.setId(WEAPONS[weaponI.current].id);
 
@@ -373,6 +380,7 @@ export function Player() {
       }
     }
     if (view.current === "fps") alignCam.current = false;
+    else adsBlend.current = 0;
     let nextSlot = weaponI.current;
     if (actions.weaponSlot !== null) nextSlot = actions.weaponSlot;
     else if (edges.nextWeapon) nextSlot = (weaponI.current + 1) % WEAPONS.length;
@@ -627,6 +635,7 @@ export function Player() {
       pitch.current = 0.08;
       orbitYaw.current = 0;
       orbitPitch.current = 0;
+      adsBlend.current = 0;
       camPos.current.set(pos.current.x, pos.current.y + 1.7, pos.current.z + 4.2);
     }
     const bodyYaw = inMenu ? 0 : yaw.current + Math.PI;
@@ -635,7 +644,10 @@ export function Player() {
     body.rotation.y = bodyYaw;
 
     const head = headBone.current;
-    if (head) head.scale.setScalar(!inMenu && fps ? 0.01 : 1);
+    const neck = neckBone.current;
+    const hideSkull = !inMenu && fps;
+    if (head) head.scale.setScalar(hideSkull ? 0.01 : 1);
+    if (neck) neck.scale.setScalar(hideSkull ? 0.01 : 1);
     body.visible = true;
     if (weapons.current) weapons.current.root.visible = true;
     if (viewmodel.current) viewmodel.current.root.visible = false;
@@ -649,17 +661,31 @@ export function Player() {
       persp.lookAt(pos.current.x, 0.92, pos.current.z);
       nextFov = 38;
     } else if (fps) {
-      const eyePos = lookTarget.current;
-      eyePos.set(pos.current.x, pos.current.y + eye.current + bobY, pos.current.z);
-      persp.position.copy(eyePos);
+      adsBlend.current = THREE.MathUtils.damp(adsBlend.current, aiming ? 1 : 0, 12, dt);
       persp.rotation.order = "YXZ";
       persp.rotation.y = yaw.current;
       persp.rotation.x = pitch.current + recoil.current;
       persp.rotation.z = 0;
-      nextFov = aiming ? 62 : 78;
-      nextNear = 0.14;
-      wish.current.set(0, 0, -8).applyEuler(persp.rotation);
-      lookTarget.current.copy(eyePos).add(wish.current);
+      const lookDir = wish.current;
+      lookDir.set(0, 0, -1).applyEuler(persp.rotation);
+
+      const hipEye = lookTarget.current;
+      hipEye.set(pos.current.x, pos.current.y + eye.current + bobY, pos.current.z);
+      hipEye.addScaledVector(camFwd.current, 0.26);
+      hipEye.y += Math.max(0, -pitch.current) * 0.18;
+
+      const t = adsBlend.current;
+      if (t > 0.001 && weapons.current) {
+        body.updateMatrixWorld(true);
+        weapons.current.root.getWorldPosition(camPos.current);
+        camPos.current.addScaledVector(lookDir, -0.2);
+        camPos.current.y += 0.05;
+        hipEye.lerp(camPos.current, t);
+      }
+      persp.position.copy(hipEye);
+      nextFov = 75 - t * 27;
+      nextNear = 0.12 - t * 0.05;
+      lookTarget.current.copy(persp.position).addScaledVector(lookDir, 8);
     } else if (alignCam.current) {
       const hand = handBone.current;
       if (hand) {
