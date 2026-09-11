@@ -222,14 +222,16 @@ export function attachWeapons(hand: THREE.Object3D): WeaponHandle {
       root.quaternion.copy(_parentQ.invert()).multiply(_worldQ);
     },
     sight: (origin, barrel, up) => {
+      // Wrap is identity; hold −Z is the barrel after Ry(90) on the OBJ.
+      // Sampling the child mesh −Z was the gun's width, which parked the
+      // camera beside the receiver instead of on the sights.
       const wrap = slots[current] ?? root;
-      const mesh = wrap.children[0] ?? wrap;
-      mesh.updateWorldMatrix(true, false);
-      origin.setFromMatrixPosition(mesh.matrixWorld);
-      barrel.set(0, 0, -1).transformDirection(mesh.matrixWorld).normalize();
-      up.set(0, 1, 0).transformDirection(mesh.matrixWorld).normalize();
+      wrap.updateWorldMatrix(true, false);
+      origin.setFromMatrixPosition(wrap.matrixWorld);
+      barrel.set(0, 0, -1).transformDirection(wrap.matrixWorld).normalize();
+      up.set(0, 1, 0).transformDirection(wrap.matrixWorld).normalize();
       const def = holdOf(current);
-      return Math.max(0.22, def.gripBack + 0.14);
+      return Math.max(0.2, def.gripBack + 0.1);
     },
     children: () => root.children.length,
     dispose: () => {
