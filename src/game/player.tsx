@@ -28,6 +28,26 @@ const EYE_CROUCH = 1.05;
 const SENS = 0.00205;
 const PITCH_LIM = Math.PI / 2 - 0.04;
 const PLAYER_R = 0.32;
+const _sightOrigin = new THREE.Vector3();
+const _sightBarrel = new THREE.Vector3();
+const _sightUp = new THREE.Vector3();
+const _camX = new THREE.Vector3();
+const _camY = new THREE.Vector3();
+const _camZ = new THREE.Vector3();
+const _camMat = new THREE.Matrix4();
+const _hipQ = new THREE.Quaternion();
+const _adsQ = new THREE.Quaternion();
+const _worldUp = new THREE.Vector3(0, 1, 0);
+
+function cameraLookAlong(fwd: THREE.Vector3, out: THREE.Quaternion) {
+  _camZ.copy(fwd).multiplyScalar(-1);
+  _camX.crossVectors(fwd, _worldUp);
+  if (_camX.lengthSq() < 1e-6) _camX.set(1, 0, 0);
+  else _camX.normalize();
+  _camY.crossVectors(_camZ, _camX).normalize();
+  _camMat.makeBasis(_camX, _camY, _camZ);
+  out.setFromRotationMatrix(_camMat);
+}
 
 const CLIP = {
   idle: "Idle_Loop",
@@ -666,25 +686,30 @@ export function Player() {
       persp.rotation.y = yaw.current;
       persp.rotation.x = pitch.current + recoil.current;
       persp.rotation.z = 0;
+      _hipQ.copy(persp.quaternion);
+
       const lookDir = wish.current;
       lookDir.set(0, 0, -1).applyEuler(persp.rotation);
 
+      const down = Math.max(0, -pitch.current);
       const hipEye = lookTarget.current;
       hipEye.set(pos.current.x, pos.current.y + eye.current + bobY, pos.current.z);
-      hipEye.addScaledVector(camFwd.current, 0.26);
-      hipEye.y += Math.max(0, -pitch.current) * 0.18;
+      hipEye.addScaledVector(camFwd.current, 0.14 + down * 0.7);
 
       const t = adsBlend.current;
       if (t > 0.001 && weapons.current) {
         body.updateMatrixWorld(true);
-        weapons.current.root.getWorldPosition(camPos.current);
-        camPos.current.addScaledVector(lookDir, -0.2);
-        camPos.current.y += 0.05;
+        const back = weapons.current.sight(_sightOrigin, _sightBarrel, _sightUp);
+        _sightOrigin.addScaledVector(_sightUp, 0.03);
+        camPos.current.copy(_sightOrigin).addScaledVector(_sightBarrel, -back);
+        cameraLookAlong(_sightBarrel, _adsQ);
         hipEye.lerp(camPos.current, t);
+        persp.quaternion.copy(_hipQ).slerp(_adsQ, t);
       }
       persp.position.copy(hipEye);
-      nextFov = 75 - t * 27;
-      nextNear = 0.12 - t * 0.05;
+      nextFov = 75 - t * 23;
+      nextNear = 0.1 - t * 0.04;
+      if (t > 0.5) lookDir.copy(_sightBarrel);
       lookTarget.current.copy(persp.position).addScaledVector(lookDir, 8);
     } else if (alignCam.current) {
       const hand = handBone.current;
@@ -727,7 +752,7 @@ export function Player() {
       persp.lookAt(lookTarget.current);
       nextFov = 70;
     }
-    if (!alignCam.current && (aiming || fps)) weapons.current?.aimAt(lookTarget.current);
+    if (!alignCam.current && aiming && !fps) weapons.current?.aimAt(lookTarget.current);
     else weapons.current?.aimAt(null);
     if (persp.fov !== nextFov || persp.near !== nextNear) {
       persp.fov = nextFov;

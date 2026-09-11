@@ -154,6 +154,8 @@ export type WeaponHandle = {
   setId: (id: WeaponId) => void;
   setLowered: (low: boolean) => void;
   aimAt: (target: THREE.Vector3 | null) => void;
+  /** Trigger origin, barrel (−Z), and gun-up. Returns camera distance behind the origin. */
+  sight: (origin: THREE.Vector3, barrel: THREE.Vector3, up: THREE.Vector3) => number;
   children: () => number;
   dispose: () => void;
 };
@@ -219,6 +221,16 @@ export function attachWeapons(hand: THREE.Object3D): WeaponHandle {
       parent.getWorldQuaternion(_parentQ);
       root.quaternion.copy(_parentQ.invert()).multiply(_worldQ);
     },
+    sight: (origin, barrel, up) => {
+      const wrap = slots[current] ?? root;
+      const mesh = wrap.children[0] ?? wrap;
+      mesh.updateWorldMatrix(true, false);
+      origin.setFromMatrixPosition(mesh.matrixWorld);
+      barrel.set(0, 0, -1).transformDirection(mesh.matrixWorld).normalize();
+      up.set(0, 1, 0).transformDirection(mesh.matrixWorld).normalize();
+      const def = holdOf(current);
+      return Math.max(0.22, def.gripBack + 0.14);
+    },
     children: () => root.children.length,
     dispose: () => {
       hand.remove(root);
@@ -254,6 +266,12 @@ export function makeViewmodel(): WeaponHandle {
       root.rotation.copy(low ? hipRot : adsRot);
     },
     aimAt: () => {},
+    sight: (origin, barrel, up) => {
+      root.getWorldPosition(origin);
+      barrel.set(0, 0, -1).transformDirection(root.matrixWorld).normalize();
+      up.set(0, 1, 0).transformDirection(root.matrixWorld).normalize();
+      return 0.38;
+    },
     children: () => root.children.length,
     dispose: () => {
       root.removeFromParent();
