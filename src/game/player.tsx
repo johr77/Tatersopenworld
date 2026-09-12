@@ -11,7 +11,7 @@ import { playEmpty, playGunshot, playImpact } from "./audio";
 import { resolveCircle } from "./world-data";
 import { attachWeapons, WEAPONS, type WeaponHandle } from "./weapon";
 import { isFemaleLook, lookDef, LOOKS, type LookId } from "./profiles";
-import { applyLoadout, coveringWorn, OUTFIT_FILES, setBaseUnderClothes, wearOutfits } from "./wardrobe";
+import { applyLoadout, installHeadOnly, isHeadMesh, OUTFIT_FILES, setHeadCutY, wearOutfits } from "./wardrobe";
 
 for (const row of LOOKS) useGLTF.preload(row.file);
 useGLTF.preload(OUTFIT_FILES.male.peasant);
@@ -32,6 +32,7 @@ const EYE_CROUCH = 1.05;
 const SENS = 0.00205;
 const PITCH_LIM = Math.PI / 2 - 0.04;
 const PLAYER_R = 0.32;
+const _neckPos = new THREE.Vector3();
 
 
 const CLIP = {
@@ -179,11 +180,21 @@ function cloneMats(mesh: THREE.Mesh) {
   else mesh.material = mesh.material.clone();
 }
 
+function prepBaseMesh(m: THREE.Mesh) {
+  if (isHeadMesh(m) || m.name.startsWith("Hit_")) return;
+  const mats = Array.isArray(m.material) ? m.material : [m.material];
+  for (const raw of mats) {
+    const mat = raw as THREE.MeshStandardMaterial;
+    if (mat) installHeadOnly(mat);
+  }
+}
+
 function dressCharacter(root: THREE.Object3D) {
   root.traverse((o) => {
     const m = o as THREE.Mesh;
     if (!m.isMesh) return;
     cloneMats(m);
+    prepBaseMesh(m);
     m.castShadow = true;
     m.receiveShadow = true;
     m.frustumCulled = false;
@@ -206,6 +217,7 @@ function paintMannequin(root: THREE.Object3D, female: boolean) {
     const m = o as THREE.Mesh;
     if (!m.isMesh) return;
     cloneMats(m);
+    prepBaseMesh(m);
     m.castShadow = true;
     m.receiveShadow = true;
     m.frustumCulled = false;
@@ -704,7 +716,11 @@ export function Player() {
     body.rotation.y = bodyYaw;
     body.updateMatrixWorld(true);
     applyLoadout(clothes.current, gameState.loadout);
-    setBaseUnderClothes(baseMeshes.current, coveringWorn(gameState.loadout));
+    const nck = neckBone.current ?? headBone.current;
+    if (nck) {
+      nck.getWorldPosition(_neckPos);
+      setHeadCutY(baseMeshes.current, _neckPos.y - 0.05);
+    }
 
     const head = headBone.current;
     const neck = neckBone.current;

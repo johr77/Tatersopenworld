@@ -470,7 +470,7 @@ function Setup({
       <div className="lobby-panel setup-panel">
         <p className="start-kicker">{name}</p>
         <h1 className="start-title">Kit</h1>
-        <p className="start-copy">Clothes sit on the body. Leave a slot on None to keep the base.</p>
+        <p className="start-copy">A full set stays on. Only the head can come off. Swap peasant or ranger on each piece.</p>
         <ul className="kit-list">
           {CLOTH_SLOTS.map((slot, i) => (
             <li key={slot.id} className="kit-row" data-focus={focus === i ? "1" : "0"}>

@@ -38,7 +38,7 @@ export function GameCanvas() {
           camera={{ fov: 70, position: [0, 1.6, 14], near: 0.08, far: 140 }}
           shadows
           dpr={[1, 1.25]}
-          gl={{ antialias: true, powerPreference: "high-performance", stencil: true }}
+          gl={{ antialias: true, powerPreference: "high-performance" }}
           onCreated={({ gl }) => {
             gl.setClearColor("#8b97a0");
             gl.domElement.style.touchAction = "none";
