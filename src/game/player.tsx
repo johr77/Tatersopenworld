@@ -16,6 +16,7 @@ import { isFemaleLook, lookDef, LOOKS, type LookId } from "./profiles";
 import { applyHeadOnly, applyLoadout, installHeadOnly, isHeadMesh, OUTFIT_FILES, wearOutfits } from "./wardrobe";
 
 for (const row of LOOKS) useGLTF.preload(row.file);
+useGLTF.preload("/models/ual2.glb");
 useGLTF.preload(OUTFIT_FILES.male.peasant);
 useGLTF.preload(OUTFIT_FILES.male.ranger);
 useGLTF.preload(OUTFIT_FILES.female.peasant);
@@ -47,6 +48,7 @@ const CLIP = {
   jumpLoop: "Jump_Loop",
   jumpLand: "Jump_Land",
   shoot: "Pistol_Shoot",
+  chop: "TreeChopping_Loop",
   reload: "Pistol_Reload",
   aim: "Pistol_Aim_Neutral",
   aimUp: "Pistol_Aim_Up",
@@ -71,12 +73,12 @@ function makeLayer(map: Map<string, MixerAction>, onPlay?: () => void) {
     get current() {
       return current;
     },
-    play(name: string, fade = 0.16) {
+    play(name: string, fade = 0.16, restart = false) {
       onPlay?.();
-      if (name === current) return;
+      if (name === current && !restart) return;
       const next = map.get(name);
       if (!next) return;
-      const prev = current ? map.get(current) : undefined;
+      const prev = current && name !== current ? map.get(current) : undefined;
       next.reset().fadeIn(fade).play();
       prev?.fadeOut(fade);
       current = name;
@@ -237,6 +239,7 @@ export function Player() {
   const { camera, gl, scene } = useThree();
   const [look, setLook] = useState<LookId>(gameState.look);
   const maleGltf = useGLTF("/models/character.glb");
+  const ual2 = useGLTF("/models/ual2.glb");
   const femaleGltf = useGLTF("/models/character_f.glb");
   const heroMaleGltf = useGLTF("/models/characters/Superhero_Male_FullBody.gltf");
   const heroFemaleGltf = useGLTF("/models/characters/Superhero_Female_FullBody.gltf");
@@ -255,8 +258,8 @@ export function Player() {
   const female = isFemaleLook(look);
   const body = useMemo(() => cloneSkinned(gltf.scene), [gltf.scene, look]);
   const controller = useMemo(
-    () => makeController(body, maleGltf.animations),
-    [body, maleGltf.animations],
+    () => makeController(body, [...maleGltf.animations, ...ual2.animations]),
+    [body, maleGltf.animations, ual2.animations],
   );
   const clothes = useRef<THREE.SkinnedMesh[]>([]);
   const baseMeshes = useRef<THREE.Mesh[]>([]);
@@ -621,9 +624,10 @@ export function Player() {
         if (fireCd.current <= 0) {
           fireCd.current = def.fireCd;
           recoil.current += def.recoil;
-          shootHold.current = 0.32;
+          shootHold.current = 0.95;
           playChop();
-          controller.upper.play(CLIP.shoot, 0.04);
+          controller.lower.play(CLIP.chop, 0.05, true);
+          controller.upper.play(CLIP.chop, 0.05, true);
           ray.current.layers.enableAll();
           ray.current.setFromCamera(ndc.current, camera);
           const hits = ray.current.intersectObjects(scene.children, true);
@@ -695,6 +699,7 @@ export function Player() {
     const fps = view.current === "fps";
     weapons.current?.setLowered(!aiming && shootHold.current <= 0);
 
+    const chopping = Boolean(def.melee && shootHold.current > 0);
     let loco = CLIP.idle;
     if (!grounded.current) {
       controller.lower.setBackpedal(false);
@@ -703,6 +708,9 @@ export function Player() {
     } else if (landHold.current > 0 && !moving) {
       landHold.current = Math.max(0, landHold.current - dt);
       controller.lower.play(CLIP.jumpLand, 0.05);
+    } else if (chopping) {
+      controller.lower.play(CLIP.chop, 0.08);
+      controller.lower.setBackpedal(false);
     } else {
       landHold.current = 0;
       if (wantCrouch && moving) loco = CLIP.crouchWalk;
@@ -716,6 +724,7 @@ export function Player() {
     }
 
     if (reloadT.current > 0) controller.upper.play(CLIP.reload, 0.08);
+    else if (chopping) controller.upper.play(CLIP.chop, 0.08);
     else if (shootHold.current > 0) controller.upper.play(CLIP.shoot, 0.05);
     else if (aiming || fps) controller.setAimPitch(pitch.current + recoil.current);
     else if (!grounded.current) {

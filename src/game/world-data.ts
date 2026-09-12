@@ -46,43 +46,37 @@ export type TargetDef = {
 
 export const MEGA_TREE_FILES = ["Pine_1", "Pine_2", "Pine_3", "Pine_4", "Pine_5"] as const;
 
-function rng(seed: number) {
-  return () => {
-    seed = (seed * 1664525 + 1013904223) >>> 0;
-    return seed / 0xffffffff;
-  };
-}
-
-const rand = rng(91);
-
-function inSpawn(x: number, z: number) {
-  return Math.abs(x) < 6 && z > -4 && z < 18;
-}
-
-function scatterPines(count: number): TreePlace[] {
+function scatterPines(): TreePlace[] {
   const out: TreePlace[] = [];
-  let guard = 0;
-  while (out.length < count && guard < count * 24) {
-    guard += 1;
-    const x = -36 + rand() * 72;
-    const z = -40 + rand() * 62;
-    if (inSpawn(x, z)) continue;
-    const file = MEGA_TREE_FILES[out.length % MEGA_TREE_FILES.length]!;
+  const add = (x: number, z: number, scale: number) => {
+    if (Math.abs(x) < 5 && z > 6 && z < 16) return;
     out.push({
       id: out.length,
       src: "mega",
-      file,
+      file: MEGA_TREE_FILES[out.length % MEGA_TREE_FILES.length]!,
       x,
       z,
-      rot: rand() * Math.PI * 2,
-      scale: 0.95 + rand() * 0.45,
+      rot: out.length * 0.83,
+      scale,
       radius: 0.48,
     });
+  };
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2 + 0.35;
+    add(Math.sin(a) * 10, Math.cos(a) * 10, 1.08 + (i % 3) * 0.08);
+  }
+  for (let i = 0; i < 10; i++) {
+    const a = (i / 10) * Math.PI * 2;
+    add(Math.sin(a) * 17, Math.cos(a) * 17 - 3, 1.02 + (i % 4) * 0.1);
+  }
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2 + 0.5;
+    add(Math.sin(a) * 26, Math.cos(a) * 24 - 5, 1.12);
   }
   return out;
 }
 
-export const TREES: TreePlace[] = scatterPines(32);
+export const TREES: TreePlace[] = scatterPines();
 export const BUILDINGS: BuildPlace[] = [];
 
 export const TARGETS: TargetDef[] = [

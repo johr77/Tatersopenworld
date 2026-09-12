@@ -30,7 +30,7 @@ export const WEAPONS: WeaponDef[] = [
   { id: "pistol", name: "Pistol", mag: 12, reserve: 36, fireCd: 0.15, reload: 1.35, recoil: 0.038, length: 0.26, gripBack: 0.055, drop: 0.012, hold: [-0.034, 0.100, 0.036], holdRot: [Math.PI / 2, -0.18, 0], obj: "/models/weapon/quaternius/Pistol_1.obj", mtl: "/models/weapon/quaternius/Pistol_1.mtl" },
   { id: "ar", name: "Rifle", mag: 30, reserve: 90, fireCd: 0.1, reload: 2.05, recoil: 0.032, length: 0.78, gripBack: 0.30, drop: 0.02, hold: [-0.0, 0.32, 0.028], holdRot: [Math.PI / 2, -0.18, 0], obj: "/models/weapon/quaternius/AssaultRifle_1.obj", mtl: "/models/weapon/quaternius/AssaultRifle_1.mtl" },
   { id: "shotgun", name: "Shotgun", mag: 6, reserve: 24, fireCd: 0.55, reload: 2.4, recoil: 0.07, length: 0.72, gripBack: 0.27, drop: 0.016, hold: [-0.035, 0.16, 0.055], holdRot: [Math.PI / 2, -0.18, 0], obj: "/models/weapon/quaternius/Shotgun_1.obj", mtl: "/models/weapon/quaternius/Shotgun_1.mtl" },
-  { id: "axe", name: "Axe", mag: 0, reserve: 0, fireCd: 0.55, reload: 0, recoil: 0.02, length: 0.7, gripBack: 0.2, drop: 0.02, hold: [-0.04, 0.14, 0.03], holdRot: [Math.PI / 2, -0.2, 0.15], melee: true, obj: "/models/tools/axe.glb", mtl: "" },
+  { id: "axe", name: "Axe", mag: 0, reserve: 0, fireCd: 0.95, reload: 0, recoil: 0.02, length: 0.7, gripBack: 0.2, drop: 0.02, hold: [-0.04, 0.14, 0.03], holdRot: [Math.PI / 2, -0.2, 0.15], melee: true, obj: "/models/tools/axe.glb", mtl: "" },
 ];
 
 function fallbackGun(length: number) {

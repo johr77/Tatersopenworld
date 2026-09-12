@@ -23,7 +23,7 @@ function prepareScene(src: THREE.Object3D, shadows = true) {
     if (!mesh.isMesh) return;
     mesh.castShadow = shadows;
     mesh.receiveShadow = shadows;
-    mesh.frustumCulled = true;
+    mesh.frustumCulled = false;
     const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     mesh.material = mats.map((m) => {
       const mat = (m as THREE.MeshStandardMaterial).clone();
