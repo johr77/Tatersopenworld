@@ -117,42 +117,56 @@ export function isHeadMesh(mesh: THREE.Object3D) {
 export function installHeadOnly(mat: THREE.MeshStandardMaterial) {
   if (mat.userData.headOnly) return;
   mat.userData.headOnly = true;
-  mat.userData.uHeadY = { value: 0 };
+  mat.userData.boneKeep = { value: new Float32Array(80) };
   mat.onBeforeCompile = (shader) => {
-    shader.uniforms.uHeadY = mat.userData.uHeadY;
+    shader.uniforms.boneKeep = mat.userData.boneKeep;
     shader.vertexShader = shader.vertexShader.replace(
       "#include <common>",
       `#include <common>
-       varying float vWorldY;`,
+       uniform float boneKeep[80];
+       varying float vHeadKeep;`,
     );
     shader.vertexShader = shader.vertexShader.replace(
-      "#include <worldpos_vertex>",
-      `#include <worldpos_vertex>
-       vWorldY = worldPosition.y;`,
+      "#include <begin_vertex>",
+      `#include <begin_vertex>
+       vHeadKeep = 1.0;`,
+    );
+    shader.vertexShader = shader.vertexShader.replace(
+      "#include <skinning_vertex>",
+      `#include <skinning_vertex>
+       vHeadKeep = boneKeep[int(skinIndex.x)] * skinWeight.x
+         + boneKeep[int(skinIndex.y)] * skinWeight.y
+         + boneKeep[int(skinIndex.z)] * skinWeight.z
+         + boneKeep[int(skinIndex.w)] * skinWeight.w;`,
     );
     shader.fragmentShader = shader.fragmentShader.replace(
       "#include <common>",
       `#include <common>
-       uniform float uHeadY;
-       varying float vWorldY;`,
+       varying float vHeadKeep;`,
     );
     shader.fragmentShader = shader.fragmentShader.replace(
       "#include <clipping_planes_fragment>",
       `#include <clipping_planes_fragment>
-       if (uHeadY > 0.01 && vWorldY < uHeadY) discard;`,
+       if (vHeadKeep < 0.42) discard;`,
     );
   };
-  mat.customProgramCacheKey = () => "head-only";
+  mat.customProgramCacheKey = () => "head-only-bones";
   mat.needsUpdate = true;
 }
 
-export function setHeadCutY(meshes: THREE.Mesh[], y: number) {
+const HEAD_BONE = /head|neck|jaw|face|eye|brow/i;
+
+export function setHeadBones(meshes: THREE.Mesh[], skeleton: THREE.Skeleton) {
+  const keep = new Float32Array(80);
+  skeleton.bones.forEach((b, i) => {
+    if (i < 80 && HEAD_BONE.test(b.name)) keep[i] = 1;
+  });
   for (const mesh of meshes) {
     if (isHeadMesh(mesh)) continue;
     const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     for (const raw of mats) {
-      const u = (raw as THREE.Material).userData?.uHeadY as { value: number } | undefined;
-      if (u) u.value = y;
+      const u = (raw as THREE.Material).userData?.boneKeep as { value: Float32Array } | undefined;
+      if (u?.value) u.value.set(keep);
     }
   }
 }

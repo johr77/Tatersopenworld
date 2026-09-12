@@ -11,7 +11,7 @@ import { playEmpty, playGunshot, playImpact } from "./audio";
 import { resolveCircle } from "./world-data";
 import { attachWeapons, WEAPONS, type WeaponHandle } from "./weapon";
 import { isFemaleLook, lookDef, LOOKS, type LookId } from "./profiles";
-import { applyLoadout, installHeadOnly, isHeadMesh, OUTFIT_FILES, setHeadCutY, wearOutfits } from "./wardrobe";
+import { applyLoadout, installHeadOnly, isHeadMesh, OUTFIT_FILES, setHeadBones, wearOutfits } from "./wardrobe";
 
 for (const row of LOOKS) useGLTF.preload(row.file);
 useGLTF.preload(OUTFIT_FILES.male.peasant);
@@ -32,7 +32,6 @@ const EYE_CROUCH = 1.05;
 const SENS = 0.00205;
 const PITCH_LIM = Math.PI / 2 - 0.04;
 const PLAYER_R = 0.32;
-const _neckPos = new THREE.Vector3();
 
 
 const CLIP = {
@@ -321,12 +320,15 @@ export function Player() {
     else dressCharacter(body);
     for (const mesh of clothes.current) mesh.removeFromParent();
     baseMeshes.current = [];
+    let skel: THREE.Skeleton | null = null;
     body.traverse((o) => {
-      const m = o as THREE.Mesh;
+      const m = o as THREE.SkinnedMesh;
       if (m.isMesh) baseMeshes.current.push(m);
+      if (m.isSkinnedMesh && m.skeleton && !skel) skel = m.skeleton;
     });
     clothes.current = wearOutfits(body, female ? [femalePeasant.scene, femaleRanger.scene] : [malePeasant.scene, maleRanger.scene]);
     applyLoadout(clothes.current, gameState.loadout);
+    if (skel) setHeadBones(baseMeshes.current, skel);
     controller.lower.play(CLIP.idle, 0);
     controller.upper.play(CLIP.idle, 0);
     controller.mixer.update(0);
@@ -716,11 +718,6 @@ export function Player() {
     body.rotation.y = bodyYaw;
     body.updateMatrixWorld(true);
     applyLoadout(clothes.current, gameState.loadout);
-    const skull = headBone.current;
-    if (skull) {
-      skull.getWorldPosition(_neckPos);
-      setHeadCutY(baseMeshes.current, _neckPos.y - 0.11);
-    }
 
     const head = headBone.current;
     const neck = neckBone.current;
