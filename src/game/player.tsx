@@ -721,7 +721,6 @@ export function Player() {
       skull.getWorldPosition(_neckPos);
       setHeadCutY(baseMeshes.current, _neckPos.y - 0.11);
     }
-    }
 
     const head = headBone.current;
     const neck = neckBone.current;
