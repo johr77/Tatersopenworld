@@ -1,4 +1,4 @@
-export type LookId = "mannequin" | "female";
+export type LookId = "mannequin" | "female" | "hero-male" | "hero-female";
 
 export type PlayerProfile = {
   id: string;
@@ -7,13 +7,19 @@ export type PlayerProfile = {
   created: number;
 };
 
-export const LOOKS: { id: LookId; label: string; file: string; tag: string }[] = [
-  { id: "mannequin", label: "Male", file: "/models/character.glb", tag: "Mannequin" },
-  { id: "female", label: "Female", file: "/models/character_f.glb", tag: "Mannequin" },
+export const LOOKS: { id: LookId; label: string; file: string; tag: string; paint: boolean }[] = [
+  { id: "mannequin", label: "Male", file: "/models/character.glb", tag: "Mannequin", paint: true },
+  { id: "female", label: "Female", file: "/models/character_f.glb", tag: "Mannequin", paint: true },
+  { id: "hero-male", label: "Male", file: "/models/characters/Superhero_Male_FullBody.gltf", tag: "Character", paint: false },
+  { id: "hero-female", label: "Female", file: "/models/characters/Superhero_Female_FullBody.gltf", tag: "Character", paint: false },
 ];
 
+const LOOK_IDS = new Set<string>(LOOKS.map((l) => l.id));
+
 export function migrateLook(id: string | undefined): LookId {
-  if (id === "female" || id === "female-peasant" || id === "female-ranger") return "female";
+  if (id && LOOK_IDS.has(id)) return id as LookId;
+  if (id === "female-peasant" || id === "female-ranger") return "hero-female";
+  if (id === "male-peasant" || id === "male-ranger") return "hero-male";
   return "mannequin";
 }
 
@@ -21,10 +27,13 @@ export function lookFile(id: LookId) {
   return LOOKS.find((l) => l.id === id)?.file ?? LOOKS[0].file;
 }
 
-export function lookLabel(id: LookId | string) {
+export function lookDef(id: LookId | string) {
   const look = migrateLook(id);
-  const row = LOOKS.find((l) => l.id === look);
-  if (!row) return "Mannequin";
+  return LOOKS.find((l) => l.id === look) ?? LOOKS[0];
+}
+
+export function lookLabel(id: LookId | string) {
+  const row = lookDef(id);
   return `${row.tag} · ${row.label}`;
 }
 

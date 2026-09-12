@@ -393,7 +393,7 @@ function Creator({
       <div className="lobby-panel">
         <p className="start-kicker">New player</p>
         <h1 className="start-title">Looks</h1>
-        <p className="start-copy">Name them, pick a body. Clothes come after the character looks right.</p>
+        <p className="start-copy">Name them, pick a body. No clothes yet — just the character.</p>
         <label className="field" data-focus={focus === 0 ? "1" : "0"}>
           <span>Name</span>
           <input

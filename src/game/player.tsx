@@ -10,10 +10,9 @@ import { gameState } from "./state";
 import { playEmpty, playGunshot, playImpact } from "./audio";
 import { resolveCircle } from "./world-data";
 import { attachWeapons, WEAPONS, type WeaponHandle } from "./weapon";
-import { type LookId } from "./profiles";
+import { lookDef, LOOKS, type LookId } from "./profiles";
 
-useGLTF.preload("/models/character.glb");
-useGLTF.preload("/models/character_f.glb");
+for (const row of LOOKS) useGLTF.preload(row.file);
 
 const WALK_SPEED = 3.2;
 const SPRINT_SPEED = 7.4;
@@ -170,6 +169,25 @@ function resetBind(root: THREE.Object3D) {
   });
 }
 
+function dressCharacter(root: THREE.Object3D) {
+  root.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh) return;
+    m.castShadow = true;
+    m.receiveShadow = true;
+    m.frustumCulled = false;
+    const mats = Array.isArray(m.material) ? m.material : [m.material];
+    for (const raw of mats) {
+      const mat = raw as THREE.MeshStandardMaterial;
+      if (!mat) continue;
+      if (mat.map) mat.map.colorSpace = THREE.SRGBColorSpace;
+      if (mat.normalMap) mat.normalMap.colorSpace = THREE.LinearSRGBColorSpace;
+      if (mat.metalnessMap) mat.metalnessMap.colorSpace = THREE.LinearSRGBColorSpace;
+      if (mat.roughnessMap) mat.roughnessMap.colorSpace = THREE.LinearSRGBColorSpace;
+    }
+  });
+}
+
 function paintMannequin(root: THREE.Object3D, female: boolean) {
   const body = female ? "#d2b48c" : "#c9b89a";
   const joints = female ? "#4a3f38" : "#2f3b34";
@@ -195,11 +213,17 @@ export function Player() {
   const [look, setLook] = useState<LookId>(gameState.look);
   const maleGltf = useGLTF("/models/character.glb");
   const femaleGltf = useGLTF("/models/character_f.glb");
-  const isFemale = look === "female";
-  const body = useMemo(
-    () => cloneSkinned(isFemale ? femaleGltf.scene : maleGltf.scene),
-    [isFemale, femaleGltf.scene, maleGltf.scene],
-  );
+  const heroMaleGltf = useGLTF("/models/characters/Superhero_Male_FullBody.gltf");
+  const heroFemaleGltf = useGLTF("/models/characters/Superhero_Female_FullBody.gltf");
+  const scenes = {
+    mannequin: maleGltf,
+    female: femaleGltf,
+    "hero-male": heroMaleGltf,
+    "hero-female": heroFemaleGltf,
+  } as const;
+  const gltf = scenes[look] ?? maleGltf;
+  const selected = lookDef(look);
+  const body = useMemo(() => cloneSkinned(gltf.scene), [gltf.scene, look]);
   const controller = useMemo(
     () => makeController(body, maleGltf.animations),
     [body, maleGltf.animations],
@@ -262,7 +286,8 @@ export function Player() {
     initInput();
     controller.mixer.stopAllAction();
     resetBind(body);
-    paintMannequin(body, isFemale);
+    if (selected.paint) paintMannequin(body, look === "female");
+    else dressCharacter(body);
     controller.lower.play(CLIP.idle, 0);
     controller.upper.play(CLIP.idle, 0);
     controller.mixer.update(0);
@@ -341,7 +366,7 @@ export function Player() {
       weapons.current?.dispose();
       weapons.current = null;
     };
-  }, [body, camera, controller, isFemale, look]);
+  }, [body, camera, controller, look, selected.paint]);
 
   useEffect(() => {
     return () => {
