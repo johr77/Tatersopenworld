@@ -1,3 +1,5 @@
+import { emptyInventory, migrateInventory, type InvSlot } from "./inventory";
+import { gameState } from "./state";
 import { emptyLoadout, migrateLoadout, type Loadout } from "./wardrobe";
 
 export type LookId = "hero-male" | "hero-female" | "mannequin" | "female";
@@ -7,6 +9,7 @@ export type PlayerProfile = {
   name: string;
   look: LookId;
   loadout: Loadout;
+  inventory: InvSlot[];
   created: number;
 };
 
@@ -52,6 +55,7 @@ export function loadPlayers(): PlayerProfile[] {
         ...p,
         look: migrateLook(p.look),
         loadout: migrateLoadout(p.loadout),
+        inventory: migrateInventory(p.inventory),
       }));
   } catch {
     return [];
@@ -70,4 +74,11 @@ export function makeId() {
   return `p-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 }
 
-export { emptyLoadout };
+export function saveCurrentInventory() {
+  const id = gameState.playerId;
+  if (!id) return;
+  const list = loadPlayers().map((p) =>
+    p.id === id ? { ...p, inventory: gameState.inventory.map((s) => (s ? { ...s } : null)) } : p,
+  );
+  savePlayers(list);
+}

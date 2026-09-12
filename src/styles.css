@@ -488,6 +488,63 @@
   gap: 8px;
 }
 
+.options-actions.menu-four {
+  grid-template-columns: 1fr 1fr;
+}
+
+.inv-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin: 8px 0 18px;
+}
+
+.inv-slot {
+  position: relative;
+  min-height: 92px;
+  border: 1px solid color-mix(in oklab, var(--color-fg) 16%, transparent);
+  border-radius: 12px;
+  background: color-mix(in oklab, var(--color-bg) 55%, transparent);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 10px 8px 8px;
+}
+
+.inv-slot[data-focus="1"] {
+  border-color: var(--color-accent);
+}
+
+.inv-slot[data-filled="1"] {
+  background: color-mix(in oklab, #5c3a22 35%, var(--color-bg));
+}
+
+.inv-count {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--color-fg);
+}
+
+.inv-log {
+  width: 52px;
+  height: 32px;
+}
+
+.inv-name {
+  font-size: 0.75rem;
+  color: var(--color-muted);
+}
+
+.inv-empty {
+  font-size: 0.75rem;
+  color: color-mix(in oklab, var(--color-muted) 70%, transparent);
+}
+
 .options-actions:has(:only-child) {
   grid-template-columns: 1fr;
 }

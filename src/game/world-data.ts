@@ -1,37 +1,7 @@
-export type PropKind =
-  | "CommonTree_1"
-  | "CommonTree_2"
-  | "CommonTree_3"
-  | "CommonTree_4"
-  | "CommonTree_5"
-  | "Pine_1"
-  | "Pine_2"
-  | "Pine_3"
-  | "Pine_4"
-  | "Pine_5"
-  | "TwistedTree_1"
-  | "TwistedTree_2"
-  | "TwistedTree_3"
-  | "TwistedTree_4"
-  | "TwistedTree_5"
-  | "DeadTree_1"
-  | "DeadTree_2"
-  | "DeadTree_3"
-  | "DeadTree_4"
-  | "DeadTree_5";
-
-export type Prop = {
-  kind: PropKind;
-  x: number;
-  z: number;
-  rot: number;
-  scale: number;
-  radius: number;
-};
-
-export type TreeSrc = "mega" | "tex";
+export type TreeSrc = "mega";
 
 export type TreePlace = {
+  id: number;
   src: TreeSrc;
   file: string;
   x: number;
@@ -74,106 +44,45 @@ export type TargetDef = {
   scale?: number;
 };
 
-export const MEGA_TREE_FILES = [
-  "CommonTree_1",
-  "CommonTree_2",
-  "CommonTree_3",
-  "CommonTree_4",
-  "CommonTree_5",
-  "Pine_1",
-  "Pine_2",
-  "Pine_3",
-  "Pine_4",
-  "Pine_5",
-  "TwistedTree_1",
-  "TwistedTree_2",
-  "TwistedTree_3",
-  "TwistedTree_4",
-  "TwistedTree_5",
-  "DeadTree_1",
-  "DeadTree_2",
-  "DeadTree_3",
-  "DeadTree_4",
-  "DeadTree_5",
-] as const;
+export const MEGA_TREE_FILES = ["Pine_1", "Pine_2", "Pine_3", "Pine_4", "Pine_5"] as const;
 
-export const TEX_TREE_FILES = [
-  "Tree_1",
-  "Tree_2",
-  "Tree_3",
-  "Tree_4",
-  "Tree_5",
-  "Tree_6",
-  "Tree_7",
-  "Tree_8",
-  "Tree_9",
-  "Tree_10",
-  "Birch_1",
-  "Birch_2",
-  "Birch_3",
-  "Birch_4",
-  "Birch_5",
-  "Birch_6",
-  "Birch_7",
-  "Birch_8",
-  "Birch_9",
-  "Birch_10",
-  "Pine_1",
-  "Pine_2",
-  "Pine_3",
-  "Pine_4",
-  "Pine_5",
-  "DeadTree_1",
-  "DeadTree_2",
-  "DeadTree_3",
-  "DeadTree_4",
-  "DeadTree_5",
-  "DeadTree_6",
-  "DeadTree_7",
-  "DeadTree_8",
-  "DeadTree_9",
-  "DeadTree_10",
-  "DeadBirch_1",
-  "DeadBirch_2",
-  "DeadBirch_3",
-  "DeadBirch_4",
-  "DeadBirch_5",
-  "DeadBirch_6",
-  "DeadBirch_7",
-  "DeadBirch_8",
-  "DeadBirch_9",
-  "DeadBirch_10",
-] as const;
-
-function catalog(): TreePlace[] {
-  const items: { src: TreeSrc; file: string; scale: number }[] = [
-    ...MEGA_TREE_FILES.map((file) => ({ src: "mega" as const, file, scale: 1.05 })),
-    ...TEX_TREE_FILES.map((file) => ({ src: "tex" as const, file, scale: 1 })),
-  ];
-  const cols = 8;
-  const gap = 8;
-  const startX = -((cols - 1) * gap) / 2;
-  const startZ = -8;
-  return items.map((item, i) => {
-    const col = i % cols;
-    const row = Math.floor(i / cols);
-    return {
-      src: item.src,
-      file: item.file,
-      x: startX + col * gap,
-      z: startZ - row * gap,
-      rot: (i * 0.73) % (Math.PI * 2),
-      scale: item.scale,
-      radius: 0.5,
-    };
-  });
+function rng(seed: number) {
+  return () => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return seed / 0xffffffff;
+  };
 }
 
-export const TREES: TreePlace[] = catalog();
-export const BUSHES: Prop[] = [];
-export const GRASS: Prop[] = [];
-export const ROCKS: Prop[] = [];
-export const PATH_STONES: Prop[] = [];
+const rand = rng(91);
+
+function inSpawn(x: number, z: number) {
+  return Math.abs(x) < 6 && z > -4 && z < 18;
+}
+
+function scatterPines(count: number): TreePlace[] {
+  const out: TreePlace[] = [];
+  let guard = 0;
+  while (out.length < count && guard < count * 24) {
+    guard += 1;
+    const x = -36 + rand() * 72;
+    const z = -40 + rand() * 62;
+    if (inSpawn(x, z)) continue;
+    const file = MEGA_TREE_FILES[out.length % MEGA_TREE_FILES.length]!;
+    out.push({
+      id: out.length,
+      src: "mega",
+      file,
+      x,
+      z,
+      rot: rand() * Math.PI * 2,
+      scale: 0.95 + rand() * 0.45,
+      radius: 0.48,
+    });
+  }
+  return out;
+}
+
+export const TREES: TreePlace[] = scatterPines(32);
 export const BUILDINGS: BuildPlace[] = [];
 
 export const TARGETS: TargetDef[] = [
@@ -186,9 +95,16 @@ export const TARGETS: TargetDef[] = [
   { type: "can", x: 1.3, z: -1.8 },
 ];
 
+export const fallenTrees = new Set<number>();
+
+export function markFallen(id: number) {
+  fallenTrees.add(id);
+}
+
 export const COLLIDERS = [
-  ...TREES.filter((t) => t.radius > 0).map((t) => ({ x: t.x, z: t.z, r: t.radius * t.scale })),
+  ...TREES.map((t) => ({ id: t.id, x: t.x, z: t.z, r: t.radius * t.scale })),
   ...TARGETS.filter((t) => t.type === "barrel" || t.type === "crate").map((t) => ({
+    id: -1,
     x: t.x,
     z: t.z,
     r: t.type === "crate" ? 0.45 : 0.4,
@@ -201,6 +117,7 @@ export function resolveCircle(x: number, z: number, radius: number) {
   let px = x;
   let pz = z;
   for (const c of COLLIDERS) {
+    if (c.id >= 0 && fallenTrees.has(c.id)) continue;
     const dx = px - c.x;
     const dz = pz - c.z;
     const min = radius + c.r;
@@ -212,7 +129,7 @@ export function resolveCircle(x: number, z: number, radius: number) {
       pz += dz * push;
     }
   }
-  const bound = 70;
+  const bound = 48;
   px = Math.max(-bound, Math.min(bound, px));
   pz = Math.max(-bound, Math.min(bound, pz));
   return { x: px, z: pz };

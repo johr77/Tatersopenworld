@@ -1,8 +1,9 @@
-import * as THREE from "three";
-import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { MTLLoader } from "three/addons/loaders/MTLLoader.js";
+import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
+import * as THREE from "three";
 
-export type WeaponId = "pistol" | "ar" | "shotgun";
+export type WeaponId = "pistol" | "ar" | "shotgun" | "axe";
 
 export type WeaponDef = {
   id: WeaponId;
@@ -20,6 +21,7 @@ export type WeaponDef = {
   hold: [number, number, number];
   /** Extra Euler XYZ on the hold (radians). Base is Rx(90) so barrel follows the fingers. */
   holdRot: [number, number, number];
+  melee?: boolean;
   obj: string;
   mtl: string;
 };
@@ -28,6 +30,7 @@ export const WEAPONS: WeaponDef[] = [
   { id: "pistol", name: "Pistol", mag: 12, reserve: 36, fireCd: 0.15, reload: 1.35, recoil: 0.038, length: 0.26, gripBack: 0.055, drop: 0.012, hold: [-0.034, 0.100, 0.036], holdRot: [Math.PI / 2, -0.18, 0], obj: "/models/weapon/quaternius/Pistol_1.obj", mtl: "/models/weapon/quaternius/Pistol_1.mtl" },
   { id: "ar", name: "Rifle", mag: 30, reserve: 90, fireCd: 0.1, reload: 2.05, recoil: 0.032, length: 0.78, gripBack: 0.30, drop: 0.02, hold: [-0.0, 0.32, 0.028], holdRot: [Math.PI / 2, -0.18, 0], obj: "/models/weapon/quaternius/AssaultRifle_1.obj", mtl: "/models/weapon/quaternius/AssaultRifle_1.mtl" },
   { id: "shotgun", name: "Shotgun", mag: 6, reserve: 24, fireCd: 0.55, reload: 2.4, recoil: 0.07, length: 0.72, gripBack: 0.27, drop: 0.016, hold: [-0.035, 0.16, 0.055], holdRot: [Math.PI / 2, -0.18, 0], obj: "/models/weapon/quaternius/Shotgun_1.obj", mtl: "/models/weapon/quaternius/Shotgun_1.mtl" },
+  { id: "axe", name: "Axe", mag: 0, reserve: 0, fireCd: 0.55, reload: 0, recoil: 0.02, length: 0.7, gripBack: 0.2, drop: 0.02, hold: [-0.04, 0.14, 0.03], holdRot: [Math.PI / 2, -0.2, 0.15], melee: true, obj: "/models/tools/axe.glb", mtl: "" },
 ];
 
 function fallbackGun(length: number) {
@@ -137,11 +140,46 @@ function loadGun(def: WeaponDef): Promise<THREE.Object3D> {
 const templates: Partial<Record<WeaponId, THREE.Object3D>> = {};
 const loading: Partial<Record<WeaponId, Promise<THREE.Object3D>>> = {};
 
+function loadAxe(def: WeaponDef): Promise<THREE.Object3D> {
+  const wrap = new THREE.Group();
+  wrap.name = "axe";
+  return new Promise((resolve) => {
+    const loader = new GLTFLoader();
+    loader.load(
+      def.obj,
+      (gltf) => {
+        const obj = gltf.scene;
+        obj.traverse((o) => {
+          const m = o as THREE.Mesh;
+          if (!m.isMesh) return;
+          m.castShadow = true;
+          m.frustumCulled = false;
+        });
+        obj.rotation.set(0, Math.PI / 2, 0);
+        obj.updateMatrixWorld(true);
+        const box = new THREE.Box3().setFromObject(obj);
+        const size = box.getSize(new THREE.Vector3());
+        obj.position.sub(box.getCenter(new THREE.Vector3()));
+        obj.scale.multiplyScalar(def.length / Math.max(size.x, size.y, size.z, 0.001));
+        obj.updateMatrixWorld(true);
+        const box2 = new THREE.Box3().setFromObject(obj);
+        obj.position.z += -box2.max.z + def.gripBack;
+        obj.position.y -= def.drop;
+        wrap.add(obj);
+        resolve(wrap);
+      },
+      undefined,
+      () => resolve(wrap),
+    );
+  });
+}
+
 function getGun(def: WeaponDef): Promise<THREE.Object3D> {
   const ready = templates[def.id];
   if (ready) return Promise.resolve(ready.clone(true));
   if (!loading[def.id]) {
-    loading[def.id] = loadGun(def).then((gun) => {
+    const make = def.id === "axe" ? loadAxe(def) : loadGun(def);
+    loading[def.id] = make.then((gun) => {
       templates[def.id] = gun;
       return gun;
     });

@@ -7,12 +7,12 @@ import * as THREE from "three";
 import {
   MEGA_TREE_FILES,
   TARGETS,
-  TEX_TREE_FILES,
   TREES,
+  markFallen,
   type BuildKind,
   type TreePlace,
 } from "./world-data";
-import { loadBuild, loadTreeObj } from "./props";
+import { loadBuild } from "./props";
 
 for (const file of MEGA_TREE_FILES) useGLTF.preload(`/models/nature/${file}.gltf`);
 
@@ -43,10 +43,49 @@ function prepareScene(src: THREE.Object3D, shadows = true) {
   return root;
 }
 
+function ChopPine({ tree, object }: { tree: TreePlace; object: THREE.Object3D }) {
+  const ref = useRef<THREE.Group>(null);
+  const hp = useRef(4);
+  const fallT = useRef(0);
+  const gone = useRef(false);
+  const data = useMemo(
+    () => ({
+      tree: true,
+      id: tree.id,
+      chop: () => {
+        if (gone.current || fallT.current > 0) return "gone" as const;
+        hp.current -= 1;
+        if (hp.current > 0) return "hit" as const;
+        fallT.current = 0.001;
+        markFallen(tree.id);
+        return "fell" as const;
+      },
+    }),
+    [tree.id],
+  );
+
+  useFrame((_, dtRaw) => {
+    if (fallT.current <= 0 || !ref.current) return;
+    fallT.current += Math.min(dtRaw, 0.05);
+    const t = Math.min(1, fallT.current / 1.35);
+    ref.current.rotation.z = t * t * (Math.PI / 2);
+    if (t >= 1) {
+      gone.current = true;
+      ref.current.visible = false;
+    }
+  });
+
+  return (
+    <group ref={ref} position={[tree.x, 0, tree.z]} rotation={[0, tree.rot, 0]} scale={tree.scale} userData={data}>
+      <primitive object={object} />
+    </group>
+  );
+}
+
 function MegaKind({ file, items }: { file: string; items: TreePlace[] }) {
   const { scene } = useGLTF(`/models/nature/${file}.gltf`);
   const template = useMemo(() => prepareScene(scene, true), [scene]);
-  const placed = items.filter((p) => p.src === "mega" && p.file === file);
+  const placed = items.filter((p) => p.file === file);
   const clones = useMemo(
     () => placed.map(() => template.clone(true)),
     [template, placed.length],
@@ -54,45 +93,7 @@ function MegaKind({ file, items }: { file: string; items: TreePlace[] }) {
   return (
     <group>
       {placed.map((p, i) => (
-        <primitive
-          key={`mega-${file}-${i}`}
-          object={clones[i]}
-          position={[p.x, 0, p.z]}
-          rotation={[0, p.rot, 0]}
-          scale={p.scale}
-        />
-      ))}
-    </group>
-  );
-}
-
-function TexKind({ file, items }: { file: string; items: TreePlace[] }) {
-  const [tpl, setTpl] = useState<THREE.Group | null>(null);
-  useEffect(() => {
-    let live = true;
-    loadTreeObj(file).then((g) => {
-      if (live) setTpl(g);
-    });
-    return () => {
-      live = false;
-    };
-  }, [file]);
-  const placed = items.filter((p) => p.src === "tex" && p.file === file);
-  const clones = useMemo(() => {
-    if (!tpl) return [];
-    return placed.map(() => tpl.clone(true));
-  }, [tpl, placed.length]);
-  if (!tpl) return null;
-  return (
-    <group>
-      {placed.map((p, i) => (
-        <primitive
-          key={`tex-${file}-${i}`}
-          object={clones[i]}
-          position={[p.x, 0, p.z]}
-          rotation={[0, p.rot, 0]}
-          scale={p.scale}
-        />
+        <ChopPine key={`pine-${file}-${p.id}`} tree={p} object={clones[i]!} />
       ))}
     </group>
   );
@@ -295,9 +296,6 @@ export function World() {
       <Ground />
       {MEGA_TREE_FILES.map((file) => (
         <MegaKind key={`mega-${file}`} file={file} items={TREES} />
-      ))}
-      {TEX_TREE_FILES.map((file) => (
-        <TexKind key={`tex-${file}`} file={file} items={TREES} />
       ))}
       <RangeTargets />
     </>

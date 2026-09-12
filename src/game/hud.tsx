@@ -31,6 +31,7 @@ import {
   type LookId,
   type PlayerProfile,
 } from "./profiles";
+import { INV_SIZE, ITEM_LABEL, emptyInventory, migrateInventory, type InvSlot } from "./inventory";
 import {
   CLOTH_SLOTS,
   STYLE_LABEL,
@@ -122,22 +123,70 @@ function Stick({
   );
 }
 
-function OptionsPanel({
-  onClose,
-  onPlayers,
+function LogIcon() {
+  return (
+    <svg className="inv-log" viewBox="0 0 64 40" aria-hidden="true">
+      <ellipse cx="32" cy="20" rx="28" ry="14" fill="#8a5a32" />
+      <ellipse cx="10" cy="20" rx="7" ry="14" fill="#d7b07a" stroke="#6b4223" strokeWidth="1.5" />
+      <ellipse cx="10" cy="20" rx="3.2" ry="7" fill="#c48a4a" />
+      <path d="M12 8.5 C40 4 54 10 58 20 C54 30 40 36 12 31" fill="none" stroke="#6b4223" strokeWidth="1.4" />
+      <path d="M18 12 C36 10 48 16 50 20" fill="none" stroke="#c48a4a" strokeWidth="1.2" opacity="0.7" />
+    </svg>
+  );
+}
+
+function InventoryPanel({ onBack, nav }: { onBack: () => void; nav: MenuNav | null }) {
+  const slots: InvSlot[] = gameState.inventory;
+  const [focus, setFocus] = useState(INV_SIZE);
+  useEffect(() => {
+    if (!nav) return;
+    if (nav.down || nav.right) setFocus((i) => (i + 1) % (INV_SIZE + 1));
+    if (nav.up || nav.left) setFocus((i) => (i - 1 + INV_SIZE + 1) % (INV_SIZE + 1));
+    if (nav.ok || nav.back) onBack();
+  }, [nav]);
+  return (
+    <div className="start-overlay options-overlay" onClick={(e) => { if (e.target === e.currentTarget) onBack(); }}>
+      <div className="start-card options-card">
+        <p className="start-kicker">{gameState.playerName || "Player"}</p>
+        <h2 className="options-title">Inventory</h2>
+        <p className="start-copy">Six pockets. Backpacks will hold more later. Chop pines for wood.</p>
+        <div className="inv-grid">
+          {slots.map((slot, i) => (
+            <div key={i} className="inv-slot" data-focus={focus === i ? "1" : "0"} data-filled={slot ? "1" : "0"}>
+              {slot?.id === "wood" ? (
+                <>
+                  <span className="inv-count tabular">{slot.count}</span>
+                  <LogIcon />
+                  <span className="inv-name">{ITEM_LABEL.wood}</span>
+                </>
+              ) : (
+                <span className="inv-empty">Empty</span>
+              )}
+            </div>
+          ))}
+        </div>
+        <div className="options-actions">
+          <button type="button" className="start-btn" data-focus={focus === INV_SIZE ? "1" : "0"} onClick={onBack}>
+            Back
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ControlsPanel({
+  onBack,
   nav,
 }: {
-  onClose: () => void;
-  onPlayers?: () => void;
+  onBack: () => void;
   nav: MenuNav | null;
 }) {
   const [, setTick] = useState(0);
   const [listen, setListen] = useState<ActionId | null>(null);
-  const [focus, setFocus] = useState(BIND_ROWS.length + 2);
-  const n = BIND_ROWS.length + (onPlayers ? 3 : 2);
-
+  const [focus, setFocus] = useState(BIND_ROWS.length + 1);
+  const n = BIND_ROWS.length + 2;
   const refresh = () => setTick((x) => x + 1);
-
   const rebind = (id: ActionId) => {
     setListen(id);
     beginRebind(id, () => {
@@ -145,7 +194,6 @@ function OptionsPanel({
       refresh();
     });
   };
-
   useEffect(() => {
     if (!nav || isRebinding()) return;
     if (nav.down) setFocus((i) => (i + 1) % n);
@@ -157,150 +205,114 @@ function OptionsPanel({
         cancelRebind();
         setListen(null);
         refresh();
-      } else if (onPlayers && focus === BIND_ROWS.length + 1) onPlayers();
-      else onClose();
+      } else onBack();
     }
-    if (nav.back) onClose();
+    if (nav.back) onBack();
   }, [nav]);
-
   return (
-    <div
-      className="start-overlay options-overlay"
-      onClick={(e) => {
-        if (e.target === e.currentTarget && !isRebinding()) onClose();
-      }}
-    >
+    <div className="start-overlay options-overlay" onClick={(e) => { if (e.target === e.currentTarget && !isRebinding()) onBack(); }}>
       <div className="start-card options-card">
         <p className="start-kicker">Controller</p>
-        <h2 className="options-title">Options</h2>
+        <h2 className="options-title">Controls</h2>
         <p className="start-copy">
-          Keyboard stays on. Xbox: left stick move, right stick look. Hold Alt / RS-click
-          to peek, then it snaps back. 1–3 switch guns.
+          Keyboard stays on. Xbox: left stick move, right stick look. 1–4 switch guns and the axe.
         </p>
-
         <div className="options-grid">
           <label className="opt-row">
             <span>Mouse look</span>
-            <input
-              type="range"
-              min={0.4}
-              max={2.2}
-              step={0.05}
-              value={settings.mouseSens}
-              onChange={(e) => {
-                settings.mouseSens = Number(e.target.value);
-                saveSettings();
-                refresh();
-              }}
-            />
+            <input type="range" min={0.4} max={2.2} step={0.05} value={settings.mouseSens} onChange={(e) => { settings.mouseSens = Number(e.target.value); saveSettings(); refresh(); }} />
           </label>
           <label className="opt-row">
             <span>Stick look</span>
-            <input
-              type="range"
-              min={0.4}
-              max={2.2}
-              step={0.05}
-              value={settings.stickSens}
-              onChange={(e) => {
-                settings.stickSens = Number(e.target.value);
-                saveSettings();
-                refresh();
-              }}
-            />
+            <input type="range" min={0.4} max={2.2} step={0.05} value={settings.stickSens} onChange={(e) => { settings.stickSens = Number(e.target.value); saveSettings(); refresh(); }} />
           </label>
           <label className="opt-row">
             <span>Deadzone</span>
-            <input
-              type="range"
-              min={0.06}
-              max={0.35}
-              step={0.01}
-              value={settings.deadzone}
-              onChange={(e) => {
-                settings.deadzone = Number(e.target.value);
-                saveSettings();
-                refresh();
-              }}
-            />
+            <input type="range" min={0.06} max={0.35} step={0.01} value={settings.deadzone} onChange={(e) => { settings.deadzone = Number(e.target.value); saveSettings(); refresh(); }} />
           </label>
           <label className="opt-check">
-            <input
-              type="checkbox"
-              checked={settings.invertY}
-              onChange={(e) => {
-                settings.invertY = e.target.checked;
-                saveSettings();
-                refresh();
-              }}
-            />
+            <input type="checkbox" checked={settings.invertY} onChange={(e) => { settings.invertY = e.target.checked; saveSettings(); refresh(); }} />
             Invert look Y
           </label>
           <label className="opt-check">
-            <input
-              type="checkbox"
-              checked={settings.snapBack}
-              onChange={(e) => {
-                settings.snapBack = e.target.checked;
-                saveSettings();
-                refresh();
-              }}
-            />
+            <input type="checkbox" checked={settings.snapBack} onChange={(e) => { settings.snapBack = e.target.checked; saveSettings(); refresh(); }} />
             Right stick snaps back
           </label>
         </div>
-
         <p className="bind-hint">
-          {listen
-            ? `Press a key or Xbox button for ${ACTION_LABELS[listen]} (Esc cancels)`
-            : "Click a bind, then press a key or Xbox button"}
+          {listen ? `Press a key or Xbox button for ${ACTION_LABELS[listen]} (Esc cancels)` : "Click a bind, then press a key or Xbox button"}
         </p>
         <ul className="bind-list">
           {BIND_ROWS.map((id, i) => (
             <li key={id}>
               <span>{ACTION_LABELS[id]}</span>
-              <button
-                type="button"
-                className={`bind-btn ${listen === id ? "listening" : ""}`}
-                data-focus={focus === i ? "1" : "0"}
-                onClick={() => rebind(id)}
-              >
+              <button type="button" className={`bind-btn ${listen === id ? "listening" : ""}`} data-focus={focus === i ? "1" : "0"} onClick={() => rebind(id)}>
                 {listen === id ? "Waiting…" : prettyBinding(id)}
               </button>
             </li>
           ))}
         </ul>
-
         <div className="options-actions">
-          <button
-            type="button"
-            className="touch-btn"
-            data-focus={focus === BIND_ROWS.length ? "1" : "0"}
-            onClick={() => {
-              resetBindings();
-              cancelRebind();
-              setListen(null);
-              refresh();
-            }}
-          >
+          <button type="button" className="touch-btn" data-focus={focus === BIND_ROWS.length ? "1" : "0"} onClick={() => { resetBindings(); cancelRebind(); setListen(null); refresh(); }}>
             Reset
           </button>
+          <button type="button" className="start-btn" data-focus={focus === BIND_ROWS.length + 1 ? "1" : "0"} onClick={onBack}>
+            Back
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OptionsPanel({
+  onClose,
+  onPlayers,
+  nav,
+}: {
+  onClose: () => void;
+  onPlayers?: () => void;
+  nav: MenuNav | null;
+}) {
+  const [pane, setPane] = useState<"root" | "controls" | "inventory">("root");
+  const [focus, setFocus] = useState(0);
+  const items = onPlayers ? 4 : 3;
+
+  useEffect(() => {
+    if (!nav || pane !== "root") return;
+    if (nav.down || nav.right) setFocus((i) => (i + 1) % items);
+    if (nav.up || nav.left) setFocus((i) => (i - 1 + items) % items);
+    if (nav.ok) {
+      if (focus === 0) setPane("inventory");
+      else if (focus === 1) setPane("controls");
+      else if (onPlayers && focus === 2) onPlayers();
+      else onClose();
+    }
+    if (nav.back) onClose();
+  }, [nav, pane, focus, items, onClose, onPlayers]);
+
+  if (pane === "inventory") return <InventoryPanel nav={nav} onBack={() => setPane("root")} />;
+  if (pane === "controls") return <ControlsPanel nav={nav} onBack={() => setPane("root")} />;
+
+  return (
+    <div className="start-overlay options-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="start-card options-card">
+        <p className="start-kicker">Paused</p>
+        <h2 className="options-title">Options</h2>
+        <p className="start-copy">Inventory for what you chop. Controls for binds and look.</p>
+        <div className="options-actions menu-four">
+          <button type="button" className="start-btn" data-focus={focus === 0 ? "1" : "0"} onClick={() => setPane("inventory")}>
+            Inventory
+          </button>
+          <button type="button" className="touch-btn" data-focus={focus === 1 ? "1" : "0"} onClick={() => setPane("controls")}>
+            Controls
+          </button>
           {onPlayers && (
-            <button
-              type="button"
-              className="touch-btn"
-              data-focus={focus === BIND_ROWS.length + 1 ? "1" : "0"}
-              onClick={onPlayers}
-            >
+            <button type="button" className="touch-btn" data-focus={focus === 2 ? "1" : "0"} onClick={onPlayers}>
               Players
             </button>
           )}
-          <button
-            type="button"
-            className="start-btn"
-            data-focus={focus === BIND_ROWS.length + (onPlayers ? 2 : 1) ? "1" : "0"}
-            onClick={onClose}
-          >
+          <button type="button" className="touch-btn" data-focus={focus === items - 1 ? "1" : "0"} onClick={onClose}>
             Done
           </button>
         </div>
@@ -613,7 +625,9 @@ export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | nul
     const loadout = profile.loadout ?? emptyLoadout();
     gameState.look = profile.look;
     gameState.playerName = profile.name;
+    gameState.playerId = profile.id;
     gameState.loadout = { ...loadout };
+    gameState.inventory = migrateInventory(profile.inventory);
     gameState.setup = true;
     setEditing(profile);
     setKit({ ...loadout });
@@ -666,7 +680,7 @@ export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | nul
   kitBackRef.current = backFromSetup;
 
   const makePlayer = (name: string, look: LookId) => {
-    const next = [...players, { id: makeId(), name, look, loadout: emptyLoadout(), created: Date.now() }];
+    const next = [...players, { id: makeId(), name, look, loadout: emptyLoadout(), inventory: emptyInventory(), created: Date.now() }];
     setPlayers(next);
     savePlayers(next);
     gameState.look = look;
@@ -825,7 +839,7 @@ export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | nul
               <span className="hud-value tabular">{gameState.hits}</span>
             </div>
             <div className="hud-chip">
-              <span className="hud-label">Gun</span>
+              <span className="hud-label">{gameState.weapon === "Axe" ? "Tool" : "Gun"}</span>
               <span className="hud-value">{gameState.weapon}</span>
             </div>
             <div className="hud-top-actions">
@@ -849,10 +863,16 @@ export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | nul
               </div>
             )}
             <div className="hud-ammo">
-              <span className="hud-ammo-mag tabular">
-                {gameState.reloading ? "REL" : String(gameState.ammo).padStart(2, "0")}
-              </span>
-              <span className="hud-ammo-res tabular">/ {gameState.reserve}</span>
+              {gameState.weapon === "Axe" ? (
+                <span className="hud-ammo-mag">CHOP</span>
+              ) : (
+                <>
+                  <span className="hud-ammo-mag tabular">
+                    {gameState.reloading ? "REL" : String(gameState.ammo).padStart(2, "0")}
+                  </span>
+                  <span className="hud-ammo-res tabular">/ {gameState.reserve}</span>
+                </>
+              )}
             </div>
           </div>
         </>

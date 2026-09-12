@@ -7,7 +7,9 @@ import * as THREE from "three";
 import { clone as cloneSkinned } from "three/addons/utils/SkeletonUtils.js";
 import { consumeLook, edges, initInput, mouse, sampleActions, setForcedKeys, settings } from "./input";
 import { gameState } from "./state";
-import { playEmpty, playGunshot, playImpact } from "./audio";
+import { playChop, playEmpty, playGunshot, playImpact, playTreeFall } from "./audio";
+import { collectWood } from "./inventory";
+import { saveCurrentInventory } from "./profiles";
 import { resolveCircle } from "./world-data";
 import { attachWeapons, WEAPONS, type WeaponHandle } from "./weapon";
 import { isFemaleLook, lookDef, LOOKS, type LookId } from "./profiles";
@@ -610,12 +612,46 @@ export function Player() {
         reserve.current -= take;
       }
     }
-    if (edges.reload && reloadT.current <= 0 && ammo.current < def.mag && reserve.current > 0) {
+    if (edges.reload && reloadT.current <= 0 && !def.melee && ammo.current < def.mag && reserve.current > 0) {
       reloadT.current = def.reload;
       controller.upper.play(CLIP.reload, 0.08);
     }
     if (edges.fire && reloadT.current <= 0) {
-      if (ammo.current <= 0) playEmpty();
+      if (def.melee) {
+        if (fireCd.current <= 0) {
+          fireCd.current = def.fireCd;
+          recoil.current += def.recoil;
+          shootHold.current = 0.32;
+          playChop();
+          controller.upper.play(CLIP.shoot, 0.04);
+          ray.current.layers.enableAll();
+          ray.current.setFromCamera(ndc.current, camera);
+          const hits = ray.current.intersectObjects(scene.children, true);
+          const hit = hits.find((h) => {
+            if (h.distance > 2.8) return false;
+            let o: THREE.Object3D | null = h.object;
+            while (o) {
+              if (o === body || o === viewmodel.current?.root) return false;
+              o = o.parent;
+            }
+            return h.distance > 0.2;
+          });
+          if (hit) {
+            let o: THREE.Object3D | null = hit.object;
+            while (o) {
+              if (o.userData?.tree && o.userData.chop) {
+                const r = o.userData.chop() as "hit" | "fell" | "gone";
+                if (r === "fell") {
+                  playTreeFall();
+                  if (collectWood(gameState.inventory)) saveCurrentInventory();
+                }
+                break;
+              }
+              o = o.parent;
+            }
+          }
+        }
+      } else if (ammo.current <= 0) playEmpty();
       else if (fireCd.current <= 0) {
         ammo.current -= 1;
         fireCd.current = def.fireCd;
@@ -746,7 +782,7 @@ export function Player() {
         nextFov = 38;
       }
     } else if (fps) {
-      adsBlend.current = THREE.MathUtils.damp(adsBlend.current, aiming ? 1 : 0, 14, dt);
+      adsBlend.current = THREE.MathUtils.damp(adsBlend.current, aiming && !def.melee ? 1 : 0, 14, dt);
       const t = adsBlend.current;
       persp.rotation.order = "YXZ";
       persp.rotation.y = yaw.current;
@@ -804,7 +840,7 @@ export function Player() {
       persp.lookAt(lookTarget.current);
       nextFov = 70;
     }
-    if (!alignCam.current && aiming && !fps) weapons.current?.aimAt(lookTarget.current);
+    if (!alignCam.current && aiming && !fps && !def.melee) weapons.current?.aimAt(lookTarget.current);
     else weapons.current?.aimAt(null);
     if (persp.fov !== nextFov || persp.near !== nextNear) {
       persp.fov = nextFov;

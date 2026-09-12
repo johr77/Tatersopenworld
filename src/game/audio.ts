@@ -1,5 +1,7 @@
 let ctx: AudioContext | null = null;
 let impactBuf: AudioBuffer | null = null;
+let chopBuf: AudioBuffer | null = null;
+let fallBuf: AudioBuffer | null = null;
 const shotBuf: Record<string, AudioBuffer | null> = { pistol: null, ar: null, shotgun: null };
 const SHOT_SRC: Record<string, string> = {
   pistol: "/audio/pistol.mp3",
@@ -14,6 +16,8 @@ function decodeInto(key: string, url: string) {
     .then((b) => ctx!.decodeAudioData(b))
     .then((buf) => {
       if (key === "impact") impactBuf = buf;
+      else if (key === "chop") chopBuf = buf;
+      else if (key === "fall") fallBuf = buf;
       else shotBuf[key] = buf;
     })
     .catch(() => {});
@@ -26,6 +30,8 @@ export function unlockAudio() {
   }
   if (ctx.state === "suspended") void ctx.resume();
   if (!impactBuf) decodeInto("impact", "/audio/impact.mp3");
+  if (!chopBuf) decodeInto("chop", "/audio/chop.mp3");
+  if (!fallBuf) decodeInto("fall", "/audio/tree-fall.mp3");
   for (const [id, url] of Object.entries(SHOT_SRC)) {
     if (!shotBuf[id]) decodeInto(id, url);
   }
@@ -103,6 +109,48 @@ export function playImpact() {
   g.connect(ac.destination);
   osc.start(t);
   osc.stop(t + 0.16);
+}
+
+export function playChop() {
+  const ac = getCtx();
+  if (!ac) return;
+  if (chopBuf) {
+    const src = ac.createBufferSource();
+    src.buffer = chopBuf;
+    const g = ac.createGain();
+    g.gain.value = 0.85;
+    src.connect(g);
+    g.connect(ac.destination);
+    src.start();
+    return;
+  }
+  playImpact();
+}
+
+export function playTreeFall() {
+  const ac = getCtx();
+  if (!ac) return;
+  if (fallBuf) {
+    const src = ac.createBufferSource();
+    src.buffer = fallBuf;
+    const g = ac.createGain();
+    g.gain.value = 0.9;
+    src.connect(g);
+    g.connect(ac.destination);
+    src.start();
+    return;
+  }
+  const t = ac.currentTime;
+  const osc = ac.createOscillator();
+  osc.frequency.setValueAtTime(180, t);
+  osc.frequency.exponentialRampToValueAtTime(40, t + 1.1);
+  const g = ac.createGain();
+  g.gain.setValueAtTime(0.28, t);
+  g.gain.exponentialRampToValueAtTime(0.001, t + 1.2);
+  osc.connect(g);
+  g.connect(ac.destination);
+  osc.start(t);
+  osc.stop(t + 1.2);
 }
 
 export function playEmpty() {

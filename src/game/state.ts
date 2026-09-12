@@ -1,4 +1,5 @@
 import type { LookId } from "./profiles";
+import { emptyInventory, type InvSlot } from "./inventory";
 import { emptyLoadout, type Loadout } from "./wardrobe";
 
 export type ViewMode = "fps" | "third";
@@ -10,6 +11,8 @@ export const gameState = {
   setup: false,
   look: "hero-male" as LookId,
   loadout: emptyLoadout() as Loadout,
+  inventory: emptyInventory() as InvSlot[],
+  playerId: "",
   playerName: "",
   yaw: 0,
   pitch: 0,

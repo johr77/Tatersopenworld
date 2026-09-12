@@ -487,6 +487,7 @@ export function sampleActions(): Actions {
     if (isDown("Digit1") || isDown("Numpad1")) weaponSlot = 0;
     else if (isDown("Digit2") || isDown("Numpad2")) weaponSlot = 1;
     else if (isDown("Digit3") || isDown("Numpad3")) weaponSlot = 2;
+    else if (isDown("Digit4") || isDown("Numpad4")) weaponSlot = 3;
   }
   const nextHeld = !blocked && (actionDown("nextWeapon", pad) || wheelDir > 0);
   const prevHeld = !blocked && (actionDown("prevWeapon", pad) || wheelDir < 0);
