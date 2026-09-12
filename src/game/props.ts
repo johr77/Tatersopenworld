@@ -16,6 +16,7 @@ function harden(root: THREE.Object3D) {
     const next = mats.map((raw) => {
       const src = raw as THREE.MeshPhongMaterial;
       const std = new THREE.MeshStandardMaterial({
+        name: src.name,
         color: src.color ?? new THREE.Color("#6a5340"),
         roughness: 0.82,
         metalness: /metal/i.test(src.name || "") ? 0.55 : 0.04,
@@ -27,6 +28,33 @@ function harden(root: THREE.Object3D) {
       return std;
     });
     mesh.material = next.length === 1 ? next[0] : next;
+  });
+}
+
+function dressFoliage(root: THREE.Object3D) {
+  root.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const raw of mats) {
+      const mat = raw as THREE.MeshStandardMaterial;
+      if (!mat) continue;
+      const n = (mat.name || "").toLowerCase();
+      const leaf = /leaf|leaves|foliage|needle/i.test(n);
+      if (mat.map) {
+        mat.map.colorSpace = THREE.SRGBColorSpace;
+        mat.map.anisotropy = 4;
+      }
+      if (leaf) {
+        mat.alphaTest = 0.48;
+        mat.transparent = false;
+        mat.depthWrite = true;
+        mat.side = THREE.DoubleSide;
+        mat.metalness = 0;
+        mat.roughness = 0.88;
+        mat.color.set("#ffffff");
+      }
+    }
   });
 }
 
@@ -82,6 +110,7 @@ export function loadTreeObj(name: string): Promise<THREE.Group> {
   loading[key] = new Promise((resolve) => {
     const finish = (group: THREE.Group) => {
       harden(group);
+      dressFoliage(group);
       plant(group);
       templates[key] = group;
       resolve(group);
