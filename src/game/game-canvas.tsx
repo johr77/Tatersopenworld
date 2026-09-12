@@ -35,7 +35,7 @@ export function GameCanvas() {
     <div ref={hostRef} className="game-host">
       <Suspense fallback={null}>
         <Canvas
-          camera={{ fov: 70, position: [0, 1.6, 14], near: 0.08, far: 140 }}
+          camera={{ fov: 70, position: [0, 1.6, 14], near: 0.08, far: 220 }}
           shadows
           dpr={[1, 1.25]}
           gl={{ antialias: true, powerPreference: "high-performance" }}
@@ -44,8 +44,10 @@ export function GameCanvas() {
             gl.domElement.style.touchAction = "none";
           }}
         >
-          <World />
-          <Player />
+          <Suspense fallback={null}>
+            <World />
+            <Player />
+          </Suspense>
         </Canvas>
       </Suspense>
       <LoadGate />
