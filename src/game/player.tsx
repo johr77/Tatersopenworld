@@ -11,7 +11,7 @@ import { playEmpty, playGunshot, playImpact } from "./audio";
 import { resolveCircle } from "./world-data";
 import { attachWeapons, WEAPONS, type WeaponHandle } from "./weapon";
 import { isFemaleLook, lookDef, LOOKS, type LookId } from "./profiles";
-import { applyLoadout, installHeadOnly, isHeadMesh, OUTFIT_FILES, setHeadBones, wearOutfits } from "./wardrobe";
+import { applyHeadOnly, applyLoadout, installHeadOnly, isHeadMesh, OUTFIT_FILES, wearOutfits } from "./wardrobe";
 
 for (const row of LOOKS) useGLTF.preload(row.file);
 useGLTF.preload(OUTFIT_FILES.male.peasant);
@@ -320,15 +320,13 @@ export function Player() {
     else dressCharacter(body);
     for (const mesh of clothes.current) mesh.removeFromParent();
     baseMeshes.current = [];
-    let skel: THREE.Skeleton | null = null;
     body.traverse((o) => {
-      const m = o as THREE.SkinnedMesh;
+      const m = o as THREE.Mesh;
       if (m.isMesh) baseMeshes.current.push(m);
-      if (m.isSkinnedMesh && m.skeleton && !skel) skel = m.skeleton;
     });
+    applyHeadOnly(baseMeshes.current);
     clothes.current = wearOutfits(body, female ? [femalePeasant.scene, femaleRanger.scene] : [malePeasant.scene, maleRanger.scene]);
     applyLoadout(clothes.current, gameState.loadout);
-    if (skel) setHeadBones(baseMeshes.current, skel);
     controller.lower.play(CLIP.idle, 0);
     controller.upper.play(CLIP.idle, 0);
     controller.mixer.update(0);

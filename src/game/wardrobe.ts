@@ -114,30 +114,22 @@ export function isHeadMesh(mesh: THREE.Object3D) {
   return n.includes("eye") || n.includes("brow");
 }
 
+const HEAD_BONE = /head|neck|jaw|face|eye|brow/i;
+
 export function installHeadOnly(mat: THREE.MeshStandardMaterial) {
   if (mat.userData.headOnly) return;
   mat.userData.headOnly = true;
-  mat.userData.boneKeep = { value: new Float32Array(80) };
   mat.onBeforeCompile = (shader) => {
-    shader.uniforms.boneKeep = mat.userData.boneKeep;
     shader.vertexShader = shader.vertexShader.replace(
       "#include <common>",
       `#include <common>
-       uniform float boneKeep[80];
+       attribute float headKeep;
        varying float vHeadKeep;`,
     );
     shader.vertexShader = shader.vertexShader.replace(
       "#include <begin_vertex>",
       `#include <begin_vertex>
-       vHeadKeep = 1.0;`,
-    );
-    shader.vertexShader = shader.vertexShader.replace(
-      "#include <skinning_vertex>",
-      `#include <skinning_vertex>
-       vHeadKeep = boneKeep[int(skinIndex.x)] * skinWeight.x
-         + boneKeep[int(skinIndex.y)] * skinWeight.y
-         + boneKeep[int(skinIndex.z)] * skinWeight.z
-         + boneKeep[int(skinIndex.w)] * skinWeight.w;`,
+       vHeadKeep = headKeep;`,
     );
     shader.fragmentShader = shader.fragmentShader.replace(
       "#include <common>",
@@ -150,24 +142,45 @@ export function installHeadOnly(mat: THREE.MeshStandardMaterial) {
        if (vHeadKeep < 0.42) discard;`,
     );
   };
-  mat.customProgramCacheKey = () => "head-only-bones";
+  mat.customProgramCacheKey = () => "head-only-attr";
   mat.needsUpdate = true;
 }
 
-const HEAD_BONE = /head|neck|jaw|face|eye|brow/i;
-
-export function setHeadBones(meshes: THREE.Mesh[], skeleton: THREE.Skeleton) {
-  const keep = new Float32Array(80);
-  skeleton.bones.forEach((b, i) => {
-    if (i < 80 && HEAD_BONE.test(b.name)) keep[i] = 1;
-  });
-  for (const mesh of meshes) {
-    if (isHeadMesh(mesh)) continue;
-    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-    for (const raw of mats) {
-      const u = (raw as THREE.Material).userData?.boneKeep as { value: Float32Array } | undefined;
-      if (u?.value) u.value.set(keep);
+function bakeHeadKeep(mesh: THREE.SkinnedMesh) {
+  const geo = mesh.geometry;
+  const pos = geo.getAttribute("position");
+  if (!pos) return;
+  const arr = new Float32Array(pos.count);
+  const idx = geo.getAttribute("skinIndex");
+  const wgt = geo.getAttribute("skinWeight");
+  if (!idx || !wgt || !mesh.skeleton) {
+    arr.fill(1);
+  } else {
+    const keep = new Uint8Array(mesh.skeleton.bones.length + 8);
+    mesh.skeleton.bones.forEach((b, i) => {
+      if (HEAD_BONE.test(b.name)) keep[i] = 1;
+    });
+    const ia = idx.array;
+    const wa = wgt.array;
+    const size = idx.itemSize;
+    for (let i = 0; i < pos.count; i++) {
+      let k = 0;
+      const base = i * size;
+      for (let j = 0; j < size; j++) {
+        const bi = Number(ia[base + j]) | 0;
+        if (bi >= 0 && keep[bi]) k += Number(wa[base + j]);
+      }
+      arr[i] = k;
     }
+  }
+  geo.setAttribute("headKeep", new THREE.BufferAttribute(arr, 1));
+}
+
+export function applyHeadOnly(meshes: THREE.Mesh[]) {
+  for (const mesh of meshes) {
+    if (isHeadMesh(mesh) || mesh.name.startsWith("Hit_")) continue;
+    const skinned = mesh as THREE.SkinnedMesh;
+    if (skinned.isSkinnedMesh) bakeHeadKeep(skinned);
   }
 }
 
