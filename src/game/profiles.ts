@@ -1,6 +1,6 @@
 import { emptyLoadout, migrateLoadout, type Loadout } from "./wardrobe";
 
-export type LookId = "mannequin" | "female" | "hero-male" | "hero-female";
+export type LookId = "hero-male" | "hero-female" | "mannequin" | "female";
 
 export type PlayerProfile = {
   id: string;
@@ -11,19 +11,13 @@ export type PlayerProfile = {
 };
 
 export const LOOKS: { id: LookId; label: string; file: string; tag: string; paint: boolean }[] = [
-  { id: "mannequin", label: "Male", file: "/models/character.glb", tag: "Mannequin", paint: true },
-  { id: "female", label: "Female", file: "/models/character_f.glb", tag: "Mannequin", paint: true },
   { id: "hero-male", label: "Male", file: "/models/characters/Superhero_Male_FullBody.gltf", tag: "Character", paint: false },
   { id: "hero-female", label: "Female", file: "/models/characters/Superhero_Female_FullBody.gltf", tag: "Character", paint: false },
 ];
 
-const LOOK_IDS = new Set<string>(LOOKS.map((l) => l.id));
-
 export function migrateLook(id: string | undefined): LookId {
-  if (id && LOOK_IDS.has(id)) return id as LookId;
-  if (id === "female-peasant" || id === "female-ranger") return "hero-female";
-  if (id === "male-peasant" || id === "male-ranger") return "hero-male";
-  return "mannequin";
+  if (id === "hero-female" || id === "female" || id === "female-peasant" || id === "female-ranger") return "hero-female";
+  return "hero-male";
 }
 
 export function isFemaleLook(id: LookId) {

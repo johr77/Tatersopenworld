@@ -73,7 +73,35 @@ export function loadBuild(name: string): Promise<THREE.Group> {
   return loading[name];
 }
 
-export function cloneBuild(name: string): THREE.Group | null {
-  const src = templates[name];
-  return src ? src.clone(true) : null;
+export function loadTreeObj(name: string): Promise<THREE.Group> {
+  const key = `tree-${name}`;
+  if (templates[key]) return Promise.resolve(templates[key]);
+  if (loading[key]) return loading[key];
+  const objUrl = `/models/trees2020/${name}.obj`;
+  const mtlUrl = `/models/trees2020/${name}.mtl`;
+  loading[key] = new Promise((resolve) => {
+    const finish = (group: THREE.Group) => {
+      harden(group);
+      plant(group);
+      templates[key] = group;
+      resolve(group);
+    };
+    const mtl = new MTLLoader();
+    mtl.setResourcePath("/models/trees2020/");
+    mtl.load(
+      mtlUrl,
+      (materials) => {
+        materials.preload();
+        const obj = new OBJLoader();
+        obj.setMaterials(materials);
+        obj.load(objUrl, finish, undefined, () => finish(new THREE.Group()));
+      },
+      undefined,
+      () => {
+        const obj = new OBJLoader();
+        obj.load(objUrl, finish, undefined, () => finish(new THREE.Group()));
+      },
+    );
+  });
+  return loading[key];
 }

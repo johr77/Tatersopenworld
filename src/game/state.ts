@@ -8,7 +8,7 @@ export const gameState = {
   locked: false,
   playing: false,
   setup: false,
-  look: "mannequin" as LookId,
+  look: "hero-male" as LookId,
   loadout: emptyLoadout() as Loadout,
   playerName: "",
   yaw: 0,

@@ -267,6 +267,7 @@ export function Player() {
   const lastNear = useRef(0.08);
   const landHold = useRef(0);
   const stickLookLatch = useRef(false);
+  const wasAiming = useRef(false);
   const alignCam = useRef(false);
   const alignDist = useRef(0.7);
   const adsBlend = useRef(0);
@@ -502,14 +503,18 @@ export function Player() {
     }
 
     if (stickHeld) stickLookLatch.current = true;
-    if (third && !aiming && !inspecting && !stickHeld && stickLookLatch.current) {
+    if (aiming) {
+      wasAiming.current = true;
+      stickLookLatch.current = false;
+    }
+    if (third && !aiming && !inspecting && !stickHeld && (stickLookLatch.current || wasAiming.current)) {
       pitch.current = THREE.MathUtils.damp(pitch.current, 0, 8, dt);
       if (Math.abs(pitch.current) < 0.025) {
         pitch.current = 0;
         stickLookLatch.current = false;
+        wasAiming.current = false;
       }
     }
-    if (aiming) stickLookLatch.current = false;
 
     pitch.current = Math.max(-PITCH_LIM, Math.min(PITCH_LIM, pitch.current));
     orbitPitch.current = inspecting

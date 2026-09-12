@@ -5,49 +5,16 @@ import { Environment, useGLTF } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import {
-  BUSHES,
-  BUILDINGS,
-  GRASS,
-  PATH_STONES,
-  ROCKS,
+  MEGA_TREE_FILES,
   TARGETS,
+  TEX_TREE_FILES,
   TREES,
   type BuildKind,
-  type Prop,
+  type TreePlace,
 } from "./world-data";
-import { cloneBuild, loadBuild } from "./props";
+import { loadBuild, loadTreeObj } from "./props";
 
-useGLTF.preload("/models/nature/CommonTree_1.gltf");
-useGLTF.preload("/models/nature/CommonTree_3.gltf");
-useGLTF.preload("/models/nature/CommonTree_5.gltf");
-useGLTF.preload("/models/nature/Pine_1.gltf");
-useGLTF.preload("/models/nature/Bush_Common.gltf");
-useGLTF.preload("/models/nature/Grass_Common_Tall.gltf");
-useGLTF.preload("/models/nature/Grass_Common_Short.gltf");
-useGLTF.preload("/models/nature/Rock_Medium_1.gltf");
-useGLTF.preload("/models/nature/Rock_Medium_2.gltf");
-useGLTF.preload("/models/nature/Rock_Medium_3.gltf");
-useGLTF.preload("/models/nature/RockPath_Round_Wide.gltf");
-useGLTF.preload("/models/nature/RockPath_Round_Small_1.gltf");
-useGLTF.preload("/models/nature/RockPath_Round_Small_2.gltf");
-useGLTF.preload("/models/nature/RockPath_Round_Small_3.gltf");
-
-const KIND_URL: Record<Prop["kind"], string> = {
-  CommonTree_1: "/models/nature/CommonTree_1.gltf",
-  CommonTree_3: "/models/nature/CommonTree_3.gltf",
-  CommonTree_5: "/models/nature/CommonTree_5.gltf",
-  Pine_1: "/models/nature/Pine_1.gltf",
-  Bush_Common: "/models/nature/Bush_Common.gltf",
-  Grass_Common_Tall: "/models/nature/Grass_Common_Tall.gltf",
-  Grass_Common_Short: "/models/nature/Grass_Common_Short.gltf",
-  Rock_Medium_1: "/models/nature/Rock_Medium_1.gltf",
-  Rock_Medium_2: "/models/nature/Rock_Medium_2.gltf",
-  Rock_Medium_3: "/models/nature/Rock_Medium_3.gltf",
-  RockPath_Round_Wide: "/models/nature/RockPath_Round_Wide.gltf",
-  RockPath_Round_Small_1: "/models/nature/RockPath_Round_Small_1.gltf",
-  RockPath_Round_Small_2: "/models/nature/RockPath_Round_Small_2.gltf",
-  RockPath_Round_Small_3: "/models/nature/RockPath_Round_Small_3.gltf",
-};
+for (const file of MEGA_TREE_FILES) useGLTF.preload(`/models/nature/${file}.gltf`);
 
 function prepareScene(src: THREE.Object3D, shadows = true) {
   const root = src.clone(true);
@@ -76,11 +43,10 @@ function prepareScene(src: THREE.Object3D, shadows = true) {
   return root;
 }
 
-function Scattered({ kind, items }: { kind: Prop["kind"]; items: Prop[] }) {
-  const { scene } = useGLTF(KIND_URL[kind]);
-  const shadows = !kind.startsWith("Grass") && !kind.startsWith("RockPath");
-  const template = useMemo(() => prepareScene(scene, shadows), [scene, shadows]);
-  const placed = items.filter((p) => p.kind === kind);
+function MegaKind({ file, items }: { file: string; items: TreePlace[] }) {
+  const { scene } = useGLTF(`/models/nature/${file}.gltf`);
+  const template = useMemo(() => prepareScene(scene, true), [scene]);
+  const placed = items.filter((p) => p.src === "mega" && p.file === file);
   const clones = useMemo(
     () => placed.map(() => template.clone(true)),
     [template, placed.length],
@@ -89,7 +55,39 @@ function Scattered({ kind, items }: { kind: Prop["kind"]; items: Prop[] }) {
     <group>
       {placed.map((p, i) => (
         <primitive
-          key={`${kind}-${i}`}
+          key={`mega-${file}-${i}`}
+          object={clones[i]}
+          position={[p.x, 0, p.z]}
+          rotation={[0, p.rot, 0]}
+          scale={p.scale}
+        />
+      ))}
+    </group>
+  );
+}
+
+function TexKind({ file, items }: { file: string; items: TreePlace[] }) {
+  const [tpl, setTpl] = useState<THREE.Group | null>(null);
+  useEffect(() => {
+    let live = true;
+    loadTreeObj(file).then((g) => {
+      if (live) setTpl(g);
+    });
+    return () => {
+      live = false;
+    };
+  }, [file]);
+  const placed = items.filter((p) => p.src === "tex" && p.file === file);
+  const clones = useMemo(() => {
+    if (!tpl) return [];
+    return placed.map(() => tpl.clone(true));
+  }, [tpl, placed.length]);
+  if (!tpl) return null;
+  return (
+    <group>
+      {placed.map((p, i) => (
+        <primitive
+          key={`tex-${file}-${i}`}
           object={clones[i]}
           position={[p.x, 0, p.z]}
           rotation={[0, p.rot, 0]}
@@ -109,32 +107,11 @@ function Ground() {
     t.anisotropy = 4;
     return t;
   }, []);
-  const dirt = useMemo(() => {
-    const c = document.createElement("canvas");
-    c.width = 256;
-    c.height = 256;
-    const g = c.getContext("2d")!;
-    g.fillStyle = "#6a5438";
-    g.fillRect(0, 0, 256, 256);
-    for (let i = 0; i < 900; i++) {
-      g.fillStyle = `rgba(${90 + (i % 40)},${70 + ((i * 3) % 28)},${40 + (i % 18)},0.35)`;
-      g.fillRect((i * 17) % 256, (i * 29) % 256, 3 + (i % 5), 2 + (i % 4));
-    }
-    const t = new THREE.CanvasTexture(c);
-    t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    t.repeat.set(2, 18);
-    t.colorSpace = THREE.SRGBColorSpace;
-    return t;
-  }, []);
   return (
     <group>
       <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <planeGeometry args={[110, 110]} />
+        <planeGeometry args={[160, 160]} />
         <meshStandardMaterial map={grass} roughness={0.95} metalness={0} color="#6e7f58" />
-      </mesh>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, -4]} receiveShadow>
-        <planeGeometry args={[4.6, 42]} />
-        <meshStandardMaterial map={dirt} roughness={1} metalness={0} color="#7a6244" />
       </mesh>
     </group>
   );
@@ -152,40 +129,6 @@ function useBuildTemplate(kind: BuildKind) {
     };
   }, [kind]);
   return tpl;
-}
-
-function Buildings() {
-  const kinds = useMemo(() => Array.from(new Set(BUILDINGS.map((b) => b.kind))), []);
-  return (
-    <group>
-      {kinds.map((kind) => (
-        <BuildingKind key={kind} kind={kind} />
-      ))}
-    </group>
-  );
-}
-
-function BuildingKind({ kind }: { kind: BuildKind }) {
-  const tpl = useBuildTemplate(kind);
-  const items = BUILDINGS.filter((b) => b.kind === kind);
-  const clones = useMemo(() => {
-    if (!tpl) return [];
-    return items.map(() => cloneBuild(kind) ?? tpl.clone(true));
-  }, [tpl, kind, items.length]);
-  if (!tpl) return null;
-  return (
-    <group>
-      {items.map((p, i) => (
-        <primitive
-          key={`${kind}-${i}`}
-          object={clones[i]}
-          position={[p.x, 0, p.z]}
-          rotation={[0, p.rot, 0]}
-          scale={p.scale}
-        />
-      ))}
-    </group>
-  );
 }
 
 function KnockGroup({
@@ -348,23 +291,14 @@ export function World() {
         shadow-camera-bottom={-22}
         color="#e8ece8"
       />
-      <fog attach="fog" args={["#8b97a0", 42, 95]} />
+      <fog attach="fog" args={["#8b97a0", 48, 110]} />
       <Ground />
-      <Scattered kind="CommonTree_1" items={TREES} />
-      <Scattered kind="CommonTree_3" items={TREES} />
-      <Scattered kind="CommonTree_5" items={TREES} />
-      <Scattered kind="Pine_1" items={TREES} />
-      <Scattered kind="Bush_Common" items={BUSHES} />
-      <Scattered kind="Grass_Common_Tall" items={GRASS} />
-      <Scattered kind="Grass_Common_Short" items={GRASS} />
-      <Scattered kind="Rock_Medium_1" items={ROCKS} />
-      <Scattered kind="Rock_Medium_2" items={ROCKS} />
-      <Scattered kind="Rock_Medium_3" items={ROCKS} />
-      <Scattered kind="RockPath_Round_Wide" items={PATH_STONES} />
-      <Scattered kind="RockPath_Round_Small_1" items={PATH_STONES} />
-      <Scattered kind="RockPath_Round_Small_2" items={PATH_STONES} />
-      <Scattered kind="RockPath_Round_Small_3" items={PATH_STONES} />
-      <Buildings />
+      {MEGA_TREE_FILES.map((file) => (
+        <MegaKind key={`mega-${file}`} file={file} items={TREES} />
+      ))}
+      {TEX_TREE_FILES.map((file) => (
+        <TexKind key={`tex-${file}`} file={file} items={TREES} />
+      ))}
       <RangeTargets />
     </>
   );

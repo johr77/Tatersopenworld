@@ -401,7 +401,7 @@ function Creator({
       <div className="lobby-panel">
         <p className="start-kicker">New player</p>
         <h1 className="start-title">Looks</h1>
-        <p className="start-copy">Name them, pick a body. No clothes yet — just the character.</p>
+        <p className="start-copy">Name them, then pick male or female.</p>
         <label className="field" data-focus={focus === 0 ? "1" : "0"}>
           <span>Name</span>
           <input
@@ -762,7 +762,7 @@ export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | nul
           players={players}
           onPlay={start}
           onNew={() => {
-            gameState.look = gameState.look || "mannequin";
+            gameState.look = gameState.look || "hero-male";
             setScreen("create");
             setFocus(0);
             focusRef.current = 0;
