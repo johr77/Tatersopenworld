@@ -85,6 +85,9 @@ export function wearOutfits(body: THREE.Object3D, scenes: THREE.Object3D[]) {
     for (const mesh of meshes) {
       const bones = mesh.skeleton.bones.map((b) => boneByName.get(b.name) ?? b);
       mesh.bind(new THREE.Skeleton(bones, mesh.skeleton.boneInverses), mesh.bindMatrix);
+      mesh.position.set(0, 0, 0);
+      mesh.rotation.set(0, 0, 0);
+      mesh.scale.set(1, 1, 1);
       mesh.frustumCulled = false;
       mesh.castShadow = true;
       mesh.receiveShadow = true;
@@ -95,10 +98,13 @@ export function wearOutfits(body: THREE.Object3D, scenes: THREE.Object3D[]) {
       const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
       for (const raw of mats) {
         const mat = raw as THREE.MeshStandardMaterial;
+        if (mat.map) mat.map.colorSpace = THREE.SRGBColorSpace;
+        const skin = /regular/i.test(mat.name || "");
+        if (skin) continue;
         mat.polygonOffset = true;
         mat.polygonOffsetFactor = -8;
         mat.polygonOffsetUnits = -8;
-        if (mat.map) mat.map.colorSpace = THREE.SRGBColorSpace;
+        inflateCloth(mat, 0.032);
       }
       mesh.removeFromParent();
       body.add(mesh);
@@ -108,20 +114,33 @@ export function wearOutfits(body: THREE.Object3D, scenes: THREE.Object3D[]) {
   return worn;
 }
 
-export function coveringWorn(loadout: Loadout) {
-  return loadout.body !== "none" || loadout.arms !== "none" || loadout.legs !== "none" || loadout.feet !== "none";
+export function inflateCloth(mat: THREE.MeshStandardMaterial, amount: number) {
+  mat.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader.replace(
+      "#include <begin_vertex>",
+      `#include <begin_vertex>
+       transformed += normalize(normal) * ${amount.toFixed(4)};`,
+    );
+  };
+  mat.customProgramCacheKey = () => `cloth-inflate-${amount}`;
+  mat.needsUpdate = true;
 }
 
-export function setBodyClip(meshes: THREE.Mesh[], plane: THREE.Plane | null) {
+export function setBaseDepthWrite(meshes: THREE.Mesh[], write: boolean) {
   for (const mesh of meshes) {
+    const n = mesh.name.toLowerCase();
+    if (n.includes("eye") || n.includes("brow")) continue;
     const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     for (const raw of mats) {
       const mat = raw as THREE.MeshStandardMaterial;
       if (!mat) continue;
-      mat.clippingPlanes = plane ? [plane] : [];
-      mat.clipShadows = Boolean(plane);
+      mat.depthWrite = write;
     }
   }
+}
+
+export function coveringWorn(loadout: Loadout) {
+  return loadout.body !== "none" || loadout.arms !== "none" || loadout.legs !== "none" || loadout.feet !== "none";
 }
 
 export function applyLoadout(worn: THREE.SkinnedMesh[], loadout: Loadout) {

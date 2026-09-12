@@ -11,7 +11,7 @@ import { playEmpty, playGunshot, playImpact } from "./audio";
 import { resolveCircle } from "./world-data";
 import { attachWeapons, WEAPONS, type WeaponHandle } from "./weapon";
 import { isFemaleLook, lookDef, LOOKS, type LookId } from "./profiles";
-import { applyLoadout, coveringWorn, OUTFIT_FILES, setBodyClip, wearOutfits } from "./wardrobe";
+import { applyLoadout, coveringWorn, OUTFIT_FILES, setBaseDepthWrite, wearOutfits } from "./wardrobe";
 
 for (const row of LOOKS) useGLTF.preload(row.file);
 useGLTF.preload(OUTFIT_FILES.male.peasant);
@@ -32,9 +32,6 @@ const EYE_CROUCH = 1.05;
 const SENS = 0.00205;
 const PITCH_LIM = Math.PI / 2 - 0.04;
 const PLAYER_R = 0.32;
-const _clipPlane = new THREE.Plane();
-const _clipN = new THREE.Vector3(0, 1, 0);
-const _neckPos = new THREE.Vector3();
 
 
 const CLIP = {
@@ -701,16 +698,7 @@ export function Player() {
     body.rotation.y = bodyYaw;
     body.updateMatrixWorld(true);
     applyLoadout(clothes.current, gameState.loadout);
-    if (coveringWorn(gameState.loadout)) {
-      const nck = neckBone.current ?? headBone.current;
-      if (nck) {
-        nck.getWorldPosition(_neckPos);
-        _clipPlane.set(_clipN, -(_neckPos.y - 0.06));
-        setBodyClip(baseMeshes.current, _clipPlane);
-      }
-    } else {
-      setBodyClip(baseMeshes.current, null);
-    }
+    setBaseDepthWrite(baseMeshes.current, !coveringWorn(gameState.loadout));
 
     const head = headBone.current;
     const neck = neckBone.current;
