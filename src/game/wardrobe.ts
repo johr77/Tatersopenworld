@@ -91,20 +91,18 @@ export function wearOutfits(body: THREE.Object3D, scenes: THREE.Object3D[]) {
       mesh.frustumCulled = false;
       mesh.castShadow = true;
       mesh.receiveShadow = true;
-      mesh.renderOrder = 2;
+      mesh.renderOrder = 1;
       mesh.visible = false;
       if (Array.isArray(mesh.material)) mesh.material = mesh.material.map((m) => m.clone());
       else mesh.material = mesh.material.clone();
       const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      const slot = slotOfMesh(mesh.name);
       for (const raw of mats) {
         const mat = raw as THREE.MeshStandardMaterial;
         if (mat.map) mat.map.colorSpace = THREE.SRGBColorSpace;
-        const skin = /regular/i.test(mat.name || "");
-        if (skin) continue;
-        mat.polygonOffset = true;
-        mat.polygonOffsetFactor = -8;
-        mat.polygonOffsetUnits = -8;
-        inflateCloth(mat, 0.032);
+        mat.depthWrite = true;
+        mat.polygonOffset = false;
+        if (slot && slot !== "head") markClothStencil(mat);
       }
       mesh.removeFromParent();
       body.add(mesh);
@@ -114,27 +112,33 @@ export function wearOutfits(body: THREE.Object3D, scenes: THREE.Object3D[]) {
   return worn;
 }
 
-export function inflateCloth(mat: THREE.MeshStandardMaterial, amount: number) {
-  mat.onBeforeCompile = (shader) => {
-    shader.vertexShader = shader.vertexShader.replace(
-      "#include <begin_vertex>",
-      `#include <begin_vertex>
-       transformed += normalize(normal) * ${amount.toFixed(4)};`,
-    );
-  };
-  mat.customProgramCacheKey = () => `cloth-inflate-${amount}`;
-  mat.needsUpdate = true;
+export function markClothStencil(mat: THREE.MeshStandardMaterial) {
+  mat.stencilWrite = true;
+  mat.stencilRef = 1;
+  mat.stencilWriteMask = 0xff;
+  mat.stencilFuncMask = 0xff;
+  mat.stencilFunc = THREE.AlwaysStencilFunc;
+  mat.stencilFail = THREE.KeepStencilOp;
+  mat.stencilZFail = THREE.KeepStencilOp;
+  mat.stencilZPass = THREE.ReplaceStencilOp;
 }
 
-export function setBaseDepthWrite(meshes: THREE.Mesh[], write: boolean) {
+export function setBaseUnderClothes(meshes: THREE.Mesh[], hideUnder: boolean) {
   for (const mesh of meshes) {
-    const n = mesh.name.toLowerCase();
-    if (n.includes("eye") || n.includes("brow")) continue;
+    mesh.renderOrder = hideUnder ? 2 : 0;
     const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
     for (const raw of mats) {
       const mat = raw as THREE.MeshStandardMaterial;
       if (!mat) continue;
-      mat.depthWrite = write;
+      mat.depthWrite = true;
+      mat.stencilWrite = false;
+      if (hideUnder) {
+        mat.stencilFunc = THREE.NotEqualStencilFunc;
+        mat.stencilRef = 1;
+        mat.stencilFuncMask = 0xff;
+      } else {
+        mat.stencilFunc = THREE.AlwaysStencilFunc;
+      }
     }
   }
 }

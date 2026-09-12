@@ -11,7 +11,7 @@ import { playEmpty, playGunshot, playImpact } from "./audio";
 import { resolveCircle } from "./world-data";
 import { attachWeapons, WEAPONS, type WeaponHandle } from "./weapon";
 import { isFemaleLook, lookDef, LOOKS, type LookId } from "./profiles";
-import { applyLoadout, coveringWorn, OUTFIT_FILES, setBaseDepthWrite, wearOutfits } from "./wardrobe";
+import { applyLoadout, coveringWorn, OUTFIT_FILES, setBaseUnderClothes, wearOutfits } from "./wardrobe";
 
 for (const row of LOOKS) useGLTF.preload(row.file);
 useGLTF.preload(OUTFIT_FILES.male.peasant);
@@ -330,6 +330,12 @@ export function Player() {
     if (hitHead) hitHead.visible = false;
     if (hitChest) hitChest.visible = false;
     weapons.current = hand ? attachWeapons(hand) : null;
+    if (weapons.current) {
+      weapons.current.root.renderOrder = 5;
+      weapons.current.root.traverse((o) => {
+        o.renderOrder = 5;
+      });
+    }
     weapons.current?.setId(WEAPONS[weaponI.current].id);
 
     window.__controlsTest = {
@@ -698,7 +704,7 @@ export function Player() {
     body.rotation.y = bodyYaw;
     body.updateMatrixWorld(true);
     applyLoadout(clothes.current, gameState.loadout);
-    setBaseDepthWrite(baseMeshes.current, !coveringWorn(gameState.loadout));
+    setBaseUnderClothes(baseMeshes.current, coveringWorn(gameState.loadout));
 
     const head = headBone.current;
     const neck = neckBone.current;
