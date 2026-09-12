@@ -716,10 +716,11 @@ export function Player() {
     body.rotation.y = bodyYaw;
     body.updateMatrixWorld(true);
     applyLoadout(clothes.current, gameState.loadout);
-    const nck = neckBone.current ?? headBone.current;
-    if (nck) {
-      nck.getWorldPosition(_neckPos);
-      setHeadCutY(baseMeshes.current, _neckPos.y - 0.05);
+    const skull = headBone.current;
+    if (skull) {
+      skull.getWorldPosition(_neckPos);
+      setHeadCutY(baseMeshes.current, _neckPos.y - 0.11);
+    }
     }
 
     const head = headBone.current;
