@@ -11,7 +11,7 @@ import { playEmpty, playGunshot, playImpact } from "./audio";
 import { resolveCircle } from "./world-data";
 import { attachWeapons, WEAPONS, type WeaponHandle } from "./weapon";
 import { isFemaleLook, lookDef, LOOKS, type LookId } from "./profiles";
-import { applyLoadout, OUTFIT_FILES, wearOutfits } from "./wardrobe";
+import { applyLoadout, coveringWorn, OUTFIT_FILES, setBodyClip, wearOutfits } from "./wardrobe";
 
 for (const row of LOOKS) useGLTF.preload(row.file);
 useGLTF.preload(OUTFIT_FILES.male.peasant);
@@ -32,6 +32,9 @@ const EYE_CROUCH = 1.05;
 const SENS = 0.00205;
 const PITCH_LIM = Math.PI / 2 - 0.04;
 const PLAYER_R = 0.32;
+const _clipPlane = new THREE.Plane();
+const _clipN = new THREE.Vector3(0, 1, 0);
+const _neckPos = new THREE.Vector3();
 
 
 const CLIP = {
@@ -174,10 +177,16 @@ function resetBind(root: THREE.Object3D) {
   });
 }
 
+function cloneMats(mesh: THREE.Mesh) {
+  if (Array.isArray(mesh.material)) mesh.material = mesh.material.map((m) => m.clone());
+  else mesh.material = mesh.material.clone();
+}
+
 function dressCharacter(root: THREE.Object3D) {
   root.traverse((o) => {
     const m = o as THREE.Mesh;
     if (!m.isMesh) return;
+    cloneMats(m);
     m.castShadow = true;
     m.receiveShadow = true;
     m.frustumCulled = false;
@@ -199,6 +208,7 @@ function paintMannequin(root: THREE.Object3D, female: boolean) {
   root.traverse((o) => {
     const m = o as THREE.Mesh;
     if (!m.isMesh) return;
+    cloneMats(m);
     m.castShadow = true;
     m.receiveShadow = true;
     m.frustumCulled = false;
@@ -239,6 +249,7 @@ export function Player() {
     [body, maleGltf.animations],
   );
   const clothes = useRef<THREE.SkinnedMesh[]>([]);
+  const baseMeshes = useRef<THREE.Mesh[]>([]);
   const plantBox = useRef(new THREE.Box3());
   const footLift = useRef(0);
   const headBone = useRef<THREE.Object3D | null>(null);
@@ -300,6 +311,11 @@ export function Player() {
     if (selected.paint) paintMannequin(body, look === "female");
     else dressCharacter(body);
     for (const mesh of clothes.current) mesh.removeFromParent();
+    baseMeshes.current = [];
+    body.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (m.isMesh) baseMeshes.current.push(m);
+    });
     clothes.current = wearOutfits(body, female ? [femalePeasant.scene, femaleRanger.scene] : [malePeasant.scene, maleRanger.scene]);
     applyLoadout(clothes.current, gameState.loadout);
     controller.lower.play(CLIP.idle, 0);
@@ -683,7 +699,18 @@ export function Player() {
     body.position.set(pos.current.x, pos.current.y + footLift.current, pos.current.z);
     body.rotation.order = "YXZ";
     body.rotation.y = bodyYaw;
+    body.updateMatrixWorld(true);
     applyLoadout(clothes.current, gameState.loadout);
+    if (coveringWorn(gameState.loadout)) {
+      const nck = neckBone.current ?? headBone.current;
+      if (nck) {
+        nck.getWorldPosition(_neckPos);
+        _clipPlane.set(_clipN, -(_neckPos.y - 0.06));
+        setBodyClip(baseMeshes.current, _clipPlane);
+      }
+    } else {
+      setBodyClip(baseMeshes.current, null);
+    }
 
     const head = headBone.current;
     const neck = neckBone.current;

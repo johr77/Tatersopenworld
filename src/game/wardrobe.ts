@@ -88,13 +88,40 @@ export function wearOutfits(body: THREE.Object3D, scenes: THREE.Object3D[]) {
       mesh.frustumCulled = false;
       mesh.castShadow = true;
       mesh.receiveShadow = true;
+      mesh.renderOrder = 2;
       mesh.visible = false;
+      if (Array.isArray(mesh.material)) mesh.material = mesh.material.map((m) => m.clone());
+      else mesh.material = mesh.material.clone();
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      for (const raw of mats) {
+        const mat = raw as THREE.MeshStandardMaterial;
+        mat.polygonOffset = true;
+        mat.polygonOffsetFactor = -8;
+        mat.polygonOffsetUnits = -8;
+        if (mat.map) mat.map.colorSpace = THREE.SRGBColorSpace;
+      }
       mesh.removeFromParent();
       body.add(mesh);
       worn.push(mesh);
     }
   }
   return worn;
+}
+
+export function coveringWorn(loadout: Loadout) {
+  return loadout.body !== "none" || loadout.arms !== "none" || loadout.legs !== "none" || loadout.feet !== "none";
+}
+
+export function setBodyClip(meshes: THREE.Mesh[], plane: THREE.Plane | null) {
+  for (const mesh of meshes) {
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const raw of mats) {
+      const mat = raw as THREE.MeshStandardMaterial;
+      if (!mat) continue;
+      mat.clippingPlanes = plane ? [plane] : [];
+      mat.clipShadows = Boolean(plane);
+    }
+  }
 }
 
 export function applyLoadout(worn: THREE.SkinnedMesh[], loadout: Loadout) {

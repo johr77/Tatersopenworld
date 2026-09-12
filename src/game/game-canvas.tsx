@@ -41,6 +41,7 @@ export function GameCanvas() {
           gl={{ antialias: true, powerPreference: "high-performance" }}
           onCreated={({ gl }) => {
             gl.setClearColor("#8b97a0");
+            gl.localClippingEnabled = true;
             gl.domElement.style.touchAction = "none";
           }}
         >
