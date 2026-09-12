@@ -10,9 +10,14 @@ import { gameState } from "./state";
 import { playEmpty, playGunshot, playImpact } from "./audio";
 import { resolveCircle } from "./world-data";
 import { attachWeapons, WEAPONS, type WeaponHandle } from "./weapon";
-import { lookDef, LOOKS, type LookId } from "./profiles";
+import { isFemaleLook, lookDef, LOOKS, type LookId } from "./profiles";
+import { applyLoadout, OUTFIT_FILES, wearOutfits } from "./wardrobe";
 
 for (const row of LOOKS) useGLTF.preload(row.file);
+useGLTF.preload(OUTFIT_FILES.male.peasant);
+useGLTF.preload(OUTFIT_FILES.male.ranger);
+useGLTF.preload(OUTFIT_FILES.female.peasant);
+useGLTF.preload(OUTFIT_FILES.female.ranger);
 
 const WALK_SPEED = 3.2;
 const SPRINT_SPEED = 7.4;
@@ -215,6 +220,10 @@ export function Player() {
   const femaleGltf = useGLTF("/models/character_f.glb");
   const heroMaleGltf = useGLTF("/models/characters/Superhero_Male_FullBody.gltf");
   const heroFemaleGltf = useGLTF("/models/characters/Superhero_Female_FullBody.gltf");
+  const malePeasant = useGLTF(OUTFIT_FILES.male.peasant);
+  const maleRanger = useGLTF(OUTFIT_FILES.male.ranger);
+  const femalePeasant = useGLTF(OUTFIT_FILES.female.peasant);
+  const femaleRanger = useGLTF(OUTFIT_FILES.female.ranger);
   const scenes = {
     mannequin: maleGltf,
     female: femaleGltf,
@@ -223,11 +232,13 @@ export function Player() {
   } as const;
   const gltf = scenes[look] ?? maleGltf;
   const selected = lookDef(look);
+  const female = isFemaleLook(look);
   const body = useMemo(() => cloneSkinned(gltf.scene), [gltf.scene, look]);
   const controller = useMemo(
     () => makeController(body, maleGltf.animations),
     [body, maleGltf.animations],
   );
+  const clothes = useRef<THREE.SkinnedMesh[]>([]);
   const plantBox = useRef(new THREE.Box3());
   const footLift = useRef(0);
   const headBone = useRef<THREE.Object3D | null>(null);
@@ -288,6 +299,9 @@ export function Player() {
     resetBind(body);
     if (selected.paint) paintMannequin(body, look === "female");
     else dressCharacter(body);
+    for (const mesh of clothes.current) mesh.removeFromParent();
+    clothes.current = wearOutfits(body, female ? [femalePeasant.scene, femaleRanger.scene] : [malePeasant.scene, maleRanger.scene]);
+    applyLoadout(clothes.current, gameState.loadout);
     controller.lower.play(CLIP.idle, 0);
     controller.upper.play(CLIP.idle, 0);
     controller.mixer.update(0);
@@ -366,7 +380,7 @@ export function Player() {
       weapons.current?.dispose();
       weapons.current = null;
     };
-  }, [body, camera, controller, look, selected.paint]);
+  }, [body, camera, controller, look, selected.paint, female, femalePeasant.scene, femaleRanger.scene, malePeasant.scene, maleRanger.scene]);
 
   useEffect(() => {
     return () => {
@@ -389,7 +403,7 @@ export function Player() {
     return () => document.removeEventListener("pointerlockchange", onLock);
   }, [gl]);
 
-  useFrame((_, dtRaw) => {
+  useFrame((state, dtRaw) => {
     const dt = Math.min(dtRaw, 0.05);
     const actions = sampleActions();
     if (edges.toggleView) view.current = view.current === "fps" ? "third" : "fps";
@@ -664,10 +678,12 @@ export function Player() {
       adsBlend.current = 0;
       camPos.current.set(pos.current.x, pos.current.y + 1.7, pos.current.z + 4.2);
     }
-    const bodyYaw = inMenu ? 0 : yaw.current + Math.PI;
+    const spinning = inMenu && gameState.setup;
+    const bodyYaw = spinning ? state.clock.elapsedTime * 0.55 : inMenu ? 0 : yaw.current + Math.PI;
     body.position.set(pos.current.x, pos.current.y + footLift.current, pos.current.z);
     body.rotation.order = "YXZ";
     body.rotation.y = bodyYaw;
+    applyLoadout(clothes.current, gameState.loadout);
 
     const head = headBone.current;
     const neck = neckBone.current;
@@ -675,7 +691,7 @@ export function Player() {
     if (head) head.scale.setScalar(hideSkull ? 0.01 : 1);
     if (neck) neck.scale.setScalar(hideSkull ? 0.01 : 1);
     body.visible = true;
-    if (weapons.current) weapons.current.root.visible = true;
+    if (weapons.current) weapons.current.root.visible = !inMenu;
     if (viewmodel.current) viewmodel.current.root.visible = false;
     if (muzzle.current) muzzle.current.intensity = flash.current > 0 ? 18 : 0;
 
@@ -683,9 +699,15 @@ export function Player() {
     let nextFov = 70;
     let nextNear = 0.08;
     if (inMenu) {
-      persp.position.set(pos.current.x + 2.15, 1.45, pos.current.z + 3.6);
-      persp.lookAt(pos.current.x, 0.92, pos.current.z);
-      nextFov = 38;
+      if (gameState.setup) {
+        persp.position.set(pos.current.x + 0.2, 1.32, pos.current.z + 3.15);
+        persp.lookAt(pos.current.x - 0.35, 0.92, pos.current.z);
+        nextFov = 34;
+      } else {
+        persp.position.set(pos.current.x + 2.15, 1.45, pos.current.z + 3.6);
+        persp.lookAt(pos.current.x, 0.92, pos.current.z);
+        nextFov = 38;
+      }
     } else if (fps) {
       adsBlend.current = THREE.MathUtils.damp(adsBlend.current, aiming ? 1 : 0, 14, dt);
       const t = adsBlend.current;

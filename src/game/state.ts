@@ -1,4 +1,5 @@
 import type { LookId } from "./profiles";
+import { emptyLoadout, type Loadout } from "./wardrobe";
 
 export type ViewMode = "fps" | "third";
 
@@ -6,7 +7,9 @@ export const gameState = {
   ready: false,
   locked: false,
   playing: false,
+  setup: false,
   look: "mannequin" as LookId,
+  loadout: emptyLoadout() as Loadout,
   playerName: "",
   yaw: 0,
   pitch: 0,

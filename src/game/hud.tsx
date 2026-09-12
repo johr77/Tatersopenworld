@@ -31,6 +31,14 @@ import {
   type LookId,
   type PlayerProfile,
 } from "./profiles";
+import {
+  CLOTH_SLOTS,
+  STYLE_LABEL,
+  cycleStyle,
+  emptyLoadout,
+  type ClothSlot,
+  type Loadout,
+} from "./wardrobe";
 
 const BIND_ROWS: ActionId[] = [
   "forward",
@@ -319,7 +327,7 @@ function Roster({
       <div className="lobby-panel">
         <p className="start-kicker">Taters range</p>
         <h1 className="start-title">Players</h1>
-        <p className="start-copy">Make a shooter, then pick them to walk onto the range.</p>
+        <p className="start-copy">Make a shooter, then pick them to kit out before the range.</p>
         {players.length === 0 ? (
           <p className="empty-note">No one yet. Make a player to start.</p>
         ) : (
@@ -440,14 +448,67 @@ function Creator({
   );
 }
 
+function Setup({
+  name,
+  loadout,
+  focus,
+  onCycle,
+  onBack,
+  onPlay,
+}: {
+  name: string;
+  loadout: Loadout;
+  focus: number;
+  onCycle: (slot: ClothSlot, dir: 1 | -1) => void;
+  onBack: () => void;
+  onPlay: () => void;
+}) {
+  const backI = CLOTH_SLOTS.length;
+  const playI = backI + 1;
+  return (
+    <div className="start-overlay setup-overlay">
+      <div className="lobby-panel setup-panel">
+        <p className="start-kicker">{name}</p>
+        <h1 className="start-title">Kit</h1>
+        <p className="start-copy">Clothes sit on the body. Leave a slot on None to keep the base.</p>
+        <ul className="kit-list">
+          {CLOTH_SLOTS.map((slot, i) => (
+            <li key={slot.id} className="kit-row" data-focus={focus === i ? "1" : "0"}>
+              <span className="kit-label">{slot.label}</span>
+              <button type="button" className="kit-step" onClick={() => onCycle(slot.id, -1)} aria-label={`Previous ${slot.label}`}>
+                ‹
+              </button>
+              <span className="kit-value">{STYLE_LABEL[loadout[slot.id]]}</span>
+              <button type="button" className="kit-step" onClick={() => onCycle(slot.id, 1)} aria-label={`Next ${slot.label}`}>
+                ›
+              </button>
+            </li>
+          ))}
+        </ul>
+        <div className="options-actions">
+          <button type="button" className="touch-btn" data-focus={focus === backI ? "1" : "0"} onClick={onBack}>
+            Back
+          </button>
+          <button type="button" className="start-btn" data-focus={focus === playI ? "1" : "0"} onClick={onPlay}>
+            Play
+          </button>
+        </div>
+        <p className="pad-hint">Xbox: D-pad up/down slots · left/right change · A play · B back</p>
+      </div>
+    </div>
+  );
+}
+
 export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | null> }) {
   const [, setTick] = useState(0);
   const [playing, setPlaying] = useState(() => gameState.playing);
   const [menu, setMenu] = useState(false);
-  const [screen, setScreen] = useState<"roster" | "create">("roster");
+  const [screen, setScreen] = useState<"roster" | "create" | "setup">("roster");
   const [players, setPlayers] = useState<PlayerProfile[]>(() => loadPlayers());
   const [focus, setFocus] = useState(0);
   const [nav, setNav] = useState<MenuNav | null>(null);
+  const [editing, setEditing] = useState<PlayerProfile | null>(null);
+  const [kit, setKit] = useState<Loadout>(() => emptyLoadout());
 
   const playingRef = useRef(playing);
   const menuRef = useRef(menu);
@@ -461,6 +522,9 @@ export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | nul
   focusRef.current = focus;
   const startRef = useRef<(p: PlayerProfile) => void>(() => {});
   const newRef = useRef<() => void>(() => {});
+  const kitCycleRef = useRef<(slot: ClothSlot, dir: 1 | -1) => void>(() => {});
+  const kitPlayRef = useRef<() => void>(() => {});
+  const kitBackRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     initInput();
@@ -489,9 +553,25 @@ export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | nul
               if (i < list.length) startRef.current(list[i]);
               else newRef.current();
             }
+          } else if (scr === "setup") {
+            const count = CLOTH_SLOTS.length + 2;
+            if (n.down) i = (i + 1) % count;
+            if (n.up) i = (i - 1 + count) % count;
+            if (i !== focusRef.current) {
+              focusRef.current = i;
+              setFocus(i);
+            }
+            if (n.left || n.right) {
+              if (i < CLOTH_SLOTS.length) kitCycleRef.current(CLOTH_SLOTS[i]!.id, n.right ? 1 : -1);
+            }
+            if (n.ok) {
+              if (i < CLOTH_SLOTS.length) kitCycleRef.current(CLOTH_SLOTS[i]!.id, 1);
+              else if (i === CLOTH_SLOTS.length) kitBackRef.current();
+              else kitPlayRef.current();
+            }
+            if (n.back) kitBackRef.current();
           } else {
             const count = 1 + LOOKS.length + 2;
-            const cols = n.left || n.right ? 1 : 2;
             if (n.down) i = (i + 2) % count;
             if (n.up) i = (i - 2 + count) % count;
             if (n.right) i = (i + 1) % count;
@@ -530,22 +610,63 @@ export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | nul
 
   const start = (profile: PlayerProfile) => {
     unlockAudio();
+    const loadout = profile.loadout ?? emptyLoadout();
     gameState.look = profile.look;
     gameState.playerName = profile.name;
-    setPlaying(true);
-    gameState.playing = true;
-    setMenu(false);
-    lockPointer(hostRef.current);
+    gameState.loadout = { ...loadout };
+    gameState.setup = true;
+    setEditing(profile);
+    setKit({ ...loadout });
+    setScreen("setup");
+    setFocus(0);
+    focusRef.current = 0;
+    setPlaying(false);
+    gameState.playing = false;
   };
   startRef.current = start;
   newRef.current = () => {
+    gameState.setup = false;
     setScreen("create");
     setFocus(0);
     focusRef.current = 0;
   };
 
+  const cycleKit = (slot: ClothSlot, dir: 1 | -1) => {
+    setKit((prev) => {
+      const next = { ...prev, [slot]: cycleStyle(slot, prev[slot], dir) };
+      gameState.loadout = next;
+      return next;
+    });
+  };
+  kitCycleRef.current = cycleKit;
+
+  const playFromSetup = () => {
+    if (editing) {
+      const next = players.map((p) => (p.id === editing.id ? { ...p, loadout: { ...kit } } : p));
+      setPlayers(next);
+      savePlayers(next);
+    }
+    gameState.loadout = { ...kit };
+    gameState.setup = false;
+    setPlaying(true);
+    gameState.playing = true;
+    setMenu(false);
+    lockPointer(hostRef.current);
+  };
+  kitPlayRef.current = playFromSetup;
+
+  const backFromSetup = () => {
+    gameState.setup = false;
+    gameState.loadout = emptyLoadout();
+    setScreen("roster");
+    setFocus(0);
+    focusRef.current = 0;
+    setEditing(null);
+  };
+  kitBackRef.current = backFromSetup;
+
   const makePlayer = (name: string, look: LookId) => {
-    const next = [...players, { id: makeId(), name, look, created: Date.now() }];
+    const next = [...players, { id: makeId(), name, look, loadout: emptyLoadout(), created: Date.now() }];
     setPlayers(next);
     savePlayers(next);
     gameState.look = look;
@@ -563,6 +684,7 @@ export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | nul
   const toRoster = () => {
     setPlaying(false);
     gameState.playing = false;
+    gameState.setup = false;
     setMenu(false);
     setScreen("roster");
     setFocus(0);
@@ -659,6 +781,16 @@ export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | nul
           }}
           focus={focus}
           nav={nav}
+        />
+      )}
+      {!playing && screen === "setup" && (
+        <Setup
+          name={editing?.name || gameState.playerName || "Player"}
+          loadout={kit}
+          focus={focus}
+          onCycle={cycleKit}
+          onBack={backFromSetup}
+          onPlay={playFromSetup}
         />
       )}
 

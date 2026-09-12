@@ -1,9 +1,12 @@
+import { emptyLoadout, migrateLoadout, type Loadout } from "./wardrobe";
+
 export type LookId = "mannequin" | "female" | "hero-male" | "hero-female";
 
 export type PlayerProfile = {
   id: string;
   name: string;
   look: LookId;
+  loadout: Loadout;
   created: number;
 };
 
@@ -21,6 +24,10 @@ export function migrateLook(id: string | undefined): LookId {
   if (id === "female-peasant" || id === "female-ranger") return "hero-female";
   if (id === "male-peasant" || id === "male-ranger") return "hero-male";
   return "mannequin";
+}
+
+export function isFemaleLook(id: LookId) {
+  return id === "female" || id === "hero-female";
 }
 
 export function lookFile(id: LookId) {
@@ -47,7 +54,11 @@ export function loadPlayers(): PlayerProfile[] {
     if (!Array.isArray(data)) return [];
     return data
       .filter((p) => p && typeof p.name === "string")
-      .map((p) => ({ ...p, look: migrateLook(p.look) }));
+      .map((p) => ({
+        ...p,
+        look: migrateLook(p.look),
+        loadout: migrateLoadout(p.loadout),
+      }));
   } catch {
     return [];
   }
@@ -64,3 +75,5 @@ export function savePlayers(list: PlayerProfile[]) {
 export function makeId() {
   return `p-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 }
+
+export { emptyLoadout };
