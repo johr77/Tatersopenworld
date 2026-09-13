@@ -407,6 +407,13 @@
   width: min(520px, 100%);
   max-height: min(86dvh, 760px);
   overflow: auto;
+  scroll-padding: 24px;
+}
+
+.bind-list li[data-focus="1"] .bind-btn,
+.bind-btn[data-focus="1"] {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
 }
 
 .options-title {
@@ -490,6 +497,70 @@
 
 .options-actions.menu-four {
   grid-template-columns: 1fr 1fr;
+}
+
+.options-actions.menu-stack {
+  grid-template-columns: 1fr;
+}
+
+.options-actions.menu-stack .start-btn,
+.options-actions.menu-stack .touch-btn {
+  min-height: 48px;
+  font-size: 1rem;
+}
+
+.later-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.osk {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 16px;
+}
+
+.osk-row {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+}
+
+.osk-key {
+  min-width: 32px;
+  height: 36px;
+  padding: 0 8px;
+  border: 1px solid color-mix(in oklab, var(--color-fg) 16%, transparent);
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--color-bg) 50%, transparent);
+  color: var(--color-fg);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.osk-key.osk-wide {
+  min-width: 72px;
+}
+
+.osk-key[data-focus="1"] {
+  border-color: var(--color-accent);
+  outline: 2px solid var(--color-accent);
+}
+
+.use-prompt {
+  position: absolute;
+  left: 50%;
+  top: 58%;
+  transform: translateX(-50%);
+  z-index: 6;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: color-mix(in oklab, var(--color-bg) 72%, transparent);
+  border: 1px solid color-mix(in oklab, var(--color-fg) 16%, transparent);
+  color: var(--color-fg);
+  font-size: 0.85rem;
+  font-weight: 600;
+  pointer-events: none;
 }
 
 .inv-grid {

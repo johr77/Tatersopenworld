@@ -78,6 +78,31 @@ function scatterPines(): TreePlace[] {
 }
 
 export const TREES: TreePlace[] = scatterPines();
+
+export type WeedPlace = { id: number; x: number; z: number; rot: number; scale: number };
+
+function scatterWeeds(): WeedPlace[] {
+  const out: WeedPlace[] = [];
+  const cx = 0;
+  const cz = 12;
+  for (let i = 0; i < 22; i++) {
+    const a = (i / 22) * Math.PI * 2 + 0.35;
+    const r = 4.2 + (i % 5) * 1.15;
+    const x = cx + Math.sin(a) * r;
+    const z = cz + Math.cos(a) * r;
+    if (Math.hypot(x - cx, z - cz) < 2.6) continue;
+    out.push({
+      id: out.length,
+      x,
+      z,
+      rot: i * 0.9,
+      scale: 1.05 + (i % 4) * 0.12,
+    });
+  }
+  return out;
+}
+
+export const WEEDS: WeedPlace[] = scatterWeeds();
 export const BUILDINGS: BuildPlace[] = [];
 
 export const TARGETS: TargetDef[] = [

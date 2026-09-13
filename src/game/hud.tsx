@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ACTION_LABELS,
   type ActionId,
@@ -10,7 +10,8 @@ import {
   isRebinding,
   mouse,
   padState,
-  prettyBinding,
+  prettyKeys,
+  prettyPad,
   resetBindings,
   saveSettings,
   setInputMuted,
@@ -41,11 +42,34 @@ import {
   type Loadout,
 } from "./wardrobe";
 
-const BIND_ROWS: ActionId[] = [
+function takeNav(nav: MenuNav | null, seen: { current: number }): MenuNav | null {
+  if (!nav || nav.seq === 0 || nav.seq === seen.current) return null;
+  seen.current = nav.seq;
+  return nav;
+}
+
+const KEY_ROWS: ActionId[] = [
   "forward",
   "back",
   "left",
   "right",
+  "jump",
+  "crouch",
+  "sprint",
+  "fire",
+  "aim",
+  "use",
+  "reload",
+  "toggleView",
+  "freeLook",
+  "alignCam",
+  "nextWeapon",
+  "prevWeapon",
+  "menu",
+];
+
+const PAD_ROWS: ActionId[] = [
+  "use",
   "jump",
   "crouch",
   "sprint",
@@ -123,6 +147,16 @@ function Stick({
   );
 }
 
+function StrandIcon() {
+  return (
+    <svg className="inv-log" viewBox="0 0 64 40" aria-hidden="true">
+      <path d="M18 38 C16 22 22 8 20 2" fill="none" stroke="#6a8f3a" strokeWidth="3" strokeLinecap="round" />
+      <path d="M32 38 C34 20 28 10 33 2" fill="none" stroke="#8aaa4a" strokeWidth="3" strokeLinecap="round" />
+      <path d="M46 38 C48 24 42 12 45 4" fill="none" stroke="#5c7a32" strokeWidth="3" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function LogIcon() {
   return (
     <svg className="inv-log" viewBox="0 0 64 40" aria-hidden="true">
@@ -137,27 +171,32 @@ function LogIcon() {
 
 function InventoryPanel({ onBack, nav }: { onBack: () => void; nav: MenuNav | null }) {
   const slots: InvSlot[] = gameState.inventory;
-  const [focus, setFocus] = useState(INV_SIZE);
+  const [focus, setFocus] = useState(0);
+  const seen = useRef(nav?.seq ?? 0);
+  const focusRef = useRef(0);
+  focusRef.current = focus;
   useEffect(() => {
-    if (!nav) return;
-    if (nav.down || nav.right) setFocus((i) => (i + 1) % (INV_SIZE + 1));
-    if (nav.up || nav.left) setFocus((i) => (i - 1 + INV_SIZE + 1) % (INV_SIZE + 1));
-    if (nav.ok || nav.back) onBack();
+    const n = takeNav(nav, seen);
+    if (!n) return;
+    if (n.down) setFocus((i) => (i + 1) % (INV_SIZE + 1));
+    if (n.up) setFocus((i) => (i - 1 + INV_SIZE + 1) % (INV_SIZE + 1));
+    if (n.back || n.menu) onBack();
+    else if (n.ok && focusRef.current === INV_SIZE) onBack();
   }, [nav]);
   return (
     <div className="start-overlay options-overlay" onClick={(e) => { if (e.target === e.currentTarget) onBack(); }}>
       <div className="start-card options-card">
         <p className="start-kicker">{gameState.playerName || "Player"}</p>
         <h2 className="options-title">Inventory</h2>
-        <p className="start-copy">Six pockets. Backpacks will hold more later. Chop pines for wood.</p>
+        <p className="start-copy">Six pockets. Chop pines for wood. Pick wispy weeds (E / X) for strand.</p>
         <div className="inv-grid">
           {slots.map((slot, i) => (
             <div key={i} className="inv-slot" data-focus={focus === i ? "1" : "0"} data-filled={slot ? "1" : "0"}>
-              {slot?.id === "wood" ? (
+              {slot ? (
                 <>
                   <span className="inv-count tabular">{slot.count}</span>
-                  <LogIcon />
-                  <span className="inv-name">{ITEM_LABEL.wood}</span>
+                  {slot.id === "strand" ? <StrandIcon /> : <LogIcon />}
+                  <span className="inv-name">{ITEM_LABEL[slot.id]}</span>
                 </>
               ) : (
                 <span className="inv-empty">Empty</span>
@@ -175,88 +214,209 @@ function InventoryPanel({ onBack, nav }: { onBack: () => void; nav: MenuNav | nu
   );
 }
 
-function ControlsPanel({
-  onBack,
+function DeviceBinds({
+  rows,
+  kind,
   nav,
+  onBack,
+  extra,
 }: {
-  onBack: () => void;
+  rows: ActionId[];
+  kind: "key" | "button";
   nav: MenuNav | null;
+  onBack: () => void;
+  extra: ReactNode;
 }) {
   const [, setTick] = useState(0);
   const [listen, setListen] = useState<ActionId | null>(null);
-  const [focus, setFocus] = useState(BIND_ROWS.length + 1);
-  const n = BIND_ROWS.length + 2;
+  const [focus, setFocus] = useState(0);
+  const seen = useRef(nav?.seq ?? 0);
+  const focusRef = useRef(0);
+  focusRef.current = focus;
+  const cardRef = useRef<HTMLDivElement>(null);
+  const n = rows.length + 2;
   const refresh = () => setTick((x) => x + 1);
   const rebind = (id: ActionId) => {
     setListen(id);
-    beginRebind(id, () => {
-      setListen(null);
-      refresh();
-    });
+    beginRebind(
+      id,
+      () => {
+        setListen(null);
+        refresh();
+      },
+      kind,
+    );
   };
   useEffect(() => {
-    if (!nav || isRebinding()) return;
-    if (nav.down) setFocus((i) => (i + 1) % n);
-    if (nav.up) setFocus((i) => (i - 1 + n) % n);
-    if (nav.ok) {
-      if (focus < BIND_ROWS.length) rebind(BIND_ROWS[focus]);
-      else if (focus === BIND_ROWS.length) {
+    const nNav = takeNav(nav, seen);
+    if (!nNav) return;
+    if (isRebinding()) return;
+    if (nNav.down) setFocus((i) => (i + 1) % n);
+    if (nNav.up) setFocus((i) => (i - 1 + n) % n);
+    if (nNav.ok) {
+      const at = focusRef.current;
+      if (at < rows.length) rebind(rows[at]!);
+      else if (at === rows.length) {
         resetBindings();
         cancelRebind();
         setListen(null);
         refresh();
       } else onBack();
     }
-    if (nav.back) onBack();
+    if (nNav.back || nNav.menu) onBack();
   }, [nav]);
+  useEffect(() => {
+    const el = cardRef.current?.querySelector("[data-focus='1']");
+    el?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [focus]);
   return (
     <div className="start-overlay options-overlay" onClick={(e) => { if (e.target === e.currentTarget && !isRebinding()) onBack(); }}>
-      <div className="start-card options-card">
-        <p className="start-kicker">Controller</p>
-        <h2 className="options-title">Controls</h2>
-        <p className="start-copy">
-          Keyboard stays on. Xbox: left stick move, right stick look. 1–4 switch guns and the axe.
-        </p>
-        <div className="options-grid">
-          <label className="opt-row">
-            <span>Mouse look</span>
-            <input type="range" min={0.4} max={2.2} step={0.05} value={settings.mouseSens} onChange={(e) => { settings.mouseSens = Number(e.target.value); saveSettings(); refresh(); }} />
-          </label>
-          <label className="opt-row">
-            <span>Stick look</span>
-            <input type="range" min={0.4} max={2.2} step={0.05} value={settings.stickSens} onChange={(e) => { settings.stickSens = Number(e.target.value); saveSettings(); refresh(); }} />
-          </label>
-          <label className="opt-row">
-            <span>Deadzone</span>
-            <input type="range" min={0.06} max={0.35} step={0.01} value={settings.deadzone} onChange={(e) => { settings.deadzone = Number(e.target.value); saveSettings(); refresh(); }} />
-          </label>
-          <label className="opt-check">
-            <input type="checkbox" checked={settings.invertY} onChange={(e) => { settings.invertY = e.target.checked; saveSettings(); refresh(); }} />
-            Invert look Y
-          </label>
-          <label className="opt-check">
-            <input type="checkbox" checked={settings.snapBack} onChange={(e) => { settings.snapBack = e.target.checked; saveSettings(); refresh(); }} />
-            Right stick snaps back
-          </label>
-        </div>
+      <div className="start-card options-card" ref={cardRef}>
+        <p className="start-kicker">Controls</p>
+        <h2 className="options-title">{kind === "button" ? "Gamepad" : "Keyboard"}</h2>
+        {extra}
         <p className="bind-hint">
-          {listen ? `Press a key or Xbox button for ${ACTION_LABELS[listen]} (Esc cancels)` : "Click a bind, then press a key or Xbox button"}
+          {listen
+            ? kind === "button"
+              ? `Waiting for ${ACTION_LABELS[listen]} — press the new button (Esc cancels)`
+              : `Press a key for ${ACTION_LABELS[listen]} (Esc cancels)`
+            : kind === "button"
+              ? "A selects a bind, then press an Xbox button"
+              : "A selects a bind, then press a key"}
         </p>
         <ul className="bind-list">
-          {BIND_ROWS.map((id, i) => (
+          {rows.map((id, i) => (
             <li key={id}>
               <span>{ACTION_LABELS[id]}</span>
               <button type="button" className={`bind-btn ${listen === id ? "listening" : ""}`} data-focus={focus === i ? "1" : "0"} onClick={() => rebind(id)}>
-                {listen === id ? "Waiting…" : prettyBinding(id)}
+                {listen === id ? "Waiting…" : kind === "button" ? prettyPad(id) : prettyKeys(id)}
               </button>
             </li>
           ))}
         </ul>
         <div className="options-actions">
-          <button type="button" className="touch-btn" data-focus={focus === BIND_ROWS.length ? "1" : "0"} onClick={() => { resetBindings(); cancelRebind(); setListen(null); refresh(); }}>
+          <button type="button" className="touch-btn" data-focus={focus === rows.length ? "1" : "0"} onClick={() => { resetBindings(); cancelRebind(); setListen(null); refresh(); }}>
             Reset
           </button>
-          <button type="button" className="start-btn" data-focus={focus === BIND_ROWS.length + 1 ? "1" : "0"} onClick={onBack}>
+          <button type="button" className="start-btn" data-focus={focus === rows.length + 1 ? "1" : "0"} onClick={onBack}>
+            Back
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ControlsHub({
+  onBack,
+  onClose,
+  nav,
+}: {
+  onBack: () => void;
+  onClose: () => void;
+  nav: MenuNav | null;
+}) {
+  const [pane, setPane] = useState<"hub" | "pad" | "keys">("hub");
+  const [focus, setFocus] = useState(0);
+  const seen = useRef(nav?.seq ?? 0);
+  const [, setTick] = useState(0);
+  const refresh = () => setTick((x) => x + 1);
+  const count = 4;
+
+  const focusRef = useRef(0);
+  focusRef.current = focus;
+  useEffect(() => {
+    if (pane !== "hub") {
+      if (nav?.seq) seen.current = nav.seq;
+      return;
+    }
+    const n = takeNav(nav, seen);
+    if (!n) return;
+    if (n.down) setFocus((i) => (i + 1) % count);
+    if (n.up) setFocus((i) => (i - 1 + count) % count);
+    if (n.ok) {
+      const at = focusRef.current;
+      if (at === 0) setPane("pad");
+      else if (at === 1) setPane("keys");
+      else if (at === 2) return;
+      else onBack();
+    }
+    if (n.back) onBack();
+    if (n.menu) onClose();
+  }, [nav, pane, onBack, onClose]);
+
+  if (pane === "pad") {
+    return (
+      <DeviceBinds
+        rows={PAD_ROWS}
+        kind="button"
+        nav={nav}
+        onBack={() => setPane("hub")}
+        extra={
+          <div className="options-grid">
+            <p className="start-copy">Left stick move. Right stick look. X is Action (pick / open / use).</p>
+            <label className="opt-row">
+              <span>Stick look</span>
+              <input type="range" min={0.4} max={2.2} step={0.05} value={settings.stickSens} onChange={(e) => { settings.stickSens = Number(e.target.value); saveSettings(); refresh(); }} />
+            </label>
+            <label className="opt-row">
+              <span>Deadzone</span>
+              <input type="range" min={0.06} max={0.35} step={0.01} value={settings.deadzone} onChange={(e) => { settings.deadzone = Number(e.target.value); saveSettings(); refresh(); }} />
+            </label>
+            <label className="opt-check">
+              <input type="checkbox" checked={settings.invertY} onChange={(e) => { settings.invertY = e.target.checked; saveSettings(); refresh(); }} />
+              Invert look Y
+            </label>
+            <label className="opt-check">
+              <input type="checkbox" checked={settings.snapBack} onChange={(e) => { settings.snapBack = e.target.checked; saveSettings(); refresh(); }} />
+              Right stick snaps back
+            </label>
+          </div>
+        }
+      />
+    );
+  }
+  if (pane === "keys") {
+    return (
+      <DeviceBinds
+        rows={KEY_ROWS}
+        kind="key"
+        nav={nav}
+        onBack={() => setPane("hub")}
+        extra={
+          <div className="options-grid">
+            <p className="start-copy">WASD move. E is Action. Mouse look while the pointer is locked.</p>
+            <label className="opt-row">
+              <span>Mouse look</span>
+              <input type="range" min={0.4} max={2.2} step={0.05} value={settings.mouseSens} onChange={(e) => { settings.mouseSens = Number(e.target.value); saveSettings(); refresh(); }} />
+            </label>
+            <label className="opt-check">
+              <input type="checkbox" checked={settings.invertY} onChange={(e) => { settings.invertY = e.target.checked; saveSettings(); refresh(); }} />
+              Invert look Y
+            </label>
+          </div>
+        }
+      />
+    );
+  }
+
+  return (
+    <div className="start-overlay options-overlay" onClick={(e) => { if (e.target === e.currentTarget) onBack(); }}>
+      <div className="start-card options-card">
+        <p className="start-kicker">Paused</p>
+        <h2 className="options-title">Controls</h2>
+        <p className="start-copy">Pick a device. D-pad up/down, A select, B back.</p>
+        <div className="options-actions menu-stack">
+          <button type="button" className="start-btn" data-focus={focus === 0 ? "1" : "0"} onClick={() => setPane("pad")}>
+            Gamepad
+          </button>
+          <button type="button" className="touch-btn" data-focus={focus === 1 ? "1" : "0"} onClick={() => setPane("keys")}>
+            Keyboard &amp; mouse
+          </button>
+          <button type="button" className="touch-btn later-btn" data-focus={focus === 2 ? "1" : "0"} disabled>
+            Phone — later
+          </button>
+          <button type="button" className="touch-btn" data-focus={focus === 3 ? "1" : "0"} onClick={onBack}>
             Back
           </button>
         </div>
@@ -276,31 +436,42 @@ function OptionsPanel({
 }) {
   const [pane, setPane] = useState<"root" | "controls" | "inventory">("root");
   const [focus, setFocus] = useState(0);
+  const seen = useRef(0);
+  const opened = useRef(performance.now());
+  const focusRef = useRef(0);
+  focusRef.current = focus;
   const items = onPlayers ? 4 : 3;
 
   useEffect(() => {
-    if (!nav || pane !== "root") return;
-    if (nav.down || nav.right) setFocus((i) => (i + 1) % items);
-    if (nav.up || nav.left) setFocus((i) => (i - 1 + items) % items);
-    if (nav.ok) {
-      if (focus === 0) setPane("inventory");
-      else if (focus === 1) setPane("controls");
-      else if (onPlayers && focus === 2) onPlayers();
+    if (pane !== "root") {
+      if (nav?.seq) seen.current = nav.seq;
+      return;
+    }
+    if (performance.now() - opened.current < 320) return;
+    const n = takeNav(nav, seen);
+    if (!n) return;
+    if (n.down) setFocus((i) => (i + 1) % items);
+    if (n.up) setFocus((i) => (i - 1 + items) % items);
+    if (n.ok) {
+      const at = focusRef.current;
+      if (at === 0) setPane("inventory");
+      else if (at === 1) setPane("controls");
+      else if (onPlayers && at === 2) onPlayers();
       else onClose();
     }
-    if (nav.back) onClose();
-  }, [nav, pane, focus, items, onClose, onPlayers]);
+    if (n.back || n.menu) onClose();
+  }, [nav, pane, items, onClose, onPlayers]);
 
   if (pane === "inventory") return <InventoryPanel nav={nav} onBack={() => setPane("root")} />;
-  if (pane === "controls") return <ControlsPanel nav={nav} onBack={() => setPane("root")} />;
+  if (pane === "controls") return <ControlsHub nav={nav} onBack={() => setPane("root")} onClose={onClose} />;
 
   return (
     <div className="start-overlay options-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="start-card options-card">
         <p className="start-kicker">Paused</p>
         <h2 className="options-title">Options</h2>
-        <p className="start-copy">Inventory for what you chop. Controls for binds and look.</p>
-        <div className="options-actions menu-four">
+        <p className="start-copy">D-pad up/down · A select · B or Menu back</p>
+        <div className="options-actions menu-stack">
           <button type="button" className="start-btn" data-focus={focus === 0 ? "1" : "0"} onClick={() => setPane("inventory")}>
             Inventory
           </button>
@@ -313,7 +484,7 @@ function OptionsPanel({
             </button>
           )}
           <button type="button" className="touch-btn" data-focus={focus === items - 1 ? "1" : "0"} onClick={onClose}>
-            Done
+            Resume
           </button>
         </div>
       </div>
@@ -373,39 +544,110 @@ function Roster({
   );
 }
 
+const KB_ROWS: string[][] = [
+  ["Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P"],
+  ["A", "S", "D", "F", "G", "H", "J", "K", "L"],
+  ["Z", "X", "C", "V", "B", "N", "M"],
+  ["spc", "del"],
+];
+const KB_FLAT = KB_ROWS.flat();
+const KB_LEN = KB_FLAT.length;
+
+function kbRowCol(i: number) {
+  let n = 0;
+  for (let r = 0; r < KB_ROWS.length; r++) {
+    const row = KB_ROWS[r]!;
+    if (i < n + row.length) return { r, c: i - n };
+    n += row.length;
+  }
+  return { r: 0, c: 0 };
+}
+
+function kbAt(r: number, c: number) {
+  const rr = Math.max(0, Math.min(KB_ROWS.length - 1, r));
+  const row = KB_ROWS[rr]!;
+  const cc = Math.max(0, Math.min(row.length - 1, c));
+  let i = 0;
+  for (let x = 0; x < rr; x++) i += KB_ROWS[x]!.length;
+  return i + cc;
+}
+
 function Creator({
   onSave,
   onBack,
-  focus,
   nav,
 }: {
   onSave: (name: string, look: LookId) => void;
   onBack: () => void;
-  focus: number;
   nav: MenuNav | null;
 }) {
   const [name, setName] = useState("");
   const [look, setLook] = useState<LookId>(gameState.look);
+  const [focus, setFocus] = useState(0);
+  const seen = useRef(nav?.seq ?? 0);
+  const focusRef = useRef(0);
+  const nameRef = useRef("");
+  const lookRef = useRef(look);
+  focusRef.current = focus;
+  nameRef.current = name;
+  lookRef.current = look;
+
+  const lookStart = KB_LEN;
+  const backI = lookStart + LOOKS.length;
+  const confirmI = backI + 1;
+  const lastI = confirmI;
 
   const pick = (id: LookId) => {
     setLook(id);
     gameState.look = id;
   };
 
-  const lookStart = 1;
-  const backI = 1 + LOOKS.length;
-  const confirmI = backI + 1;
+  const typeKey = (key: string) => {
+    if (key === "spc") setName((s) => (s.length >= 18 ? s : s + " "));
+    else if (key === "del") setName((s) => s.slice(0, -1));
+    else setName((s) => (s.length >= 18 ? s : s + key));
+  };
 
   useEffect(() => {
-    if (!nav) return;
-    if (nav.back) onBack();
-    if (!nav.ok) return;
-    if (focus >= lookStart && focus < lookStart + LOOKS.length) pick(LOOKS[focus - lookStart].id);
-    else if (focus === backI) onBack();
-    else if (focus === confirmI) {
-      const n = name.trim() || "Player";
-      onSave(n, look);
+    const n = takeNav(nav, seen);
+    if (!n) return;
+    const at = focusRef.current;
+    if (n.back) {
+      if (at < KB_LEN) {
+        setName((s) => s.slice(0, -1));
+        return;
+      }
+      onBack();
+      return;
     }
+    if (n.left || n.right || n.up || n.down) {
+      if (at < KB_LEN) {
+        const { r, c } = kbRowCol(at);
+        if (n.left) setFocus(kbAt(r, c - 1));
+        else if (n.right) setFocus(kbAt(r, c + 1));
+        else if (n.up) {
+          if (r === 0) setFocus(lastI);
+          else setFocus(kbAt(r - 1, c));
+        } else if (n.down) {
+          if (r >= KB_ROWS.length - 1) setFocus(lookStart);
+          else setFocus(kbAt(r + 1, c));
+        }
+        return;
+      }
+      if (n.down) setFocus((i) => Math.min(lastI, i + (at >= lookStart && at < backI ? LOOKS.length : 1)));
+      if (n.up) {
+        if (at === lookStart) setFocus(kbAt(KB_ROWS.length - 1, 0));
+        else setFocus((i) => Math.max(0, i - (at >= lookStart && at < backI ? LOOKS.length : 1)));
+      }
+      if (n.left) setFocus((i) => Math.max(0, i - 1));
+      if (n.right) setFocus((i) => Math.min(lastI, i + 1));
+      return;
+    }
+    if (!n.ok) return;
+    if (at < KB_LEN) typeKey(KB_FLAT[at]!);
+    else if (at >= lookStart && at < backI) pick(LOOKS[at - lookStart]!.id);
+    else if (at === backI) onBack();
+    else onSave(nameRef.current.trim() || "Player", lookRef.current);
   }, [nav]);
 
   return (
@@ -413,11 +655,10 @@ function Creator({
       <div className="lobby-panel">
         <p className="start-kicker">New player</p>
         <h1 className="start-title">Looks</h1>
-        <p className="start-copy">Name them, then pick male or female.</p>
-        <label className="field" data-focus={focus === 0 ? "1" : "0"}>
+        <p className="start-copy">Name them with the keyboard, then pick male or female.</p>
+        <label className="field">
           <span>Name</span>
           <input
-            autoFocus
             maxLength={18}
             value={name}
             placeholder="Call sign"
@@ -425,6 +666,27 @@ function Creator({
             onKeyDown={(e) => e.stopPropagation()}
           />
         </label>
+        <div className="osk" aria-label="On-screen keyboard">
+          {KB_ROWS.map((row, ri) => (
+            <div key={ri} className="osk-row">
+              {row.map((key) => {
+                const idx = KB_FLAT.indexOf(key);
+                const label = key === "spc" ? "Space" : key === "del" ? "Del" : key;
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    className={`osk-key${key === "spc" || key === "del" ? " osk-wide" : ""}`}
+                    data-focus={focus === idx ? "1" : "0"}
+                    onClick={() => typeKey(key)}
+                  >
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
+        </div>
         <div className="look-grid">
           {LOOKS.map((row, i) => (
             <button
@@ -448,13 +710,12 @@ function Creator({
             type="button"
             className="start-btn"
             data-focus={focus === confirmI ? "1" : "0"}
-            disabled={false}
             onClick={() => onSave(name.trim() || "Player", look)}
           >
             Confirm
           </button>
         </div>
-        <p className="pad-hint">Xbox: D-pad move · A select · B back</p>
+        <p className="pad-hint">Xbox: D-pad move · A type/select · B delete letter (or back)</p>
       </div>
     </div>
   );
@@ -547,8 +808,13 @@ export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | nul
       const has =
         n.up || n.down || n.left || n.right || n.ok || n.back || n.menu;
       if (has) {
-        if (n.menu && playingRef.current && !menuRef.current && !isRebinding()) {
-          setMenu(true);
+        if (n.menu && playingRef.current && !isRebinding()) {
+          if (!menuRef.current) {
+            setMenu(true);
+            setNav(null);
+          } else {
+            setNav(n);
+          }
         } else if (!playingRef.current && !menuRef.current) {
           const scr = screenRef.current;
           const list = playersRef.current;
@@ -582,28 +848,16 @@ export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | nul
               else kitPlayRef.current();
             }
             if (n.back) kitBackRef.current();
-          } else {
-            const count = 1 + LOOKS.length + 2;
-            if (n.down) i = (i + 2) % count;
-            if (n.up) i = (i - 2 + count) % count;
-            if (n.right) i = (i + 1) % count;
-            if (n.left) i = (i - 1 + count) % count;
-            if (i !== focusRef.current) {
-              focusRef.current = i;
-              setFocus(i);
-            }
           }
+          setNav(n);
+        } else {
+          setNav(n);
         }
-        setNav(n);
       } else {
         setNav(null);
       }
       if (t - last > 50) {
         last = t;
-        if (gameState.menuPulse) {
-          gameState.menuPulse = false;
-          setMenu((open) => !open);
-        }
         setTick((x) => x + 1);
       }
       id = requestAnimationFrame(loop);
@@ -793,7 +1047,6 @@ export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | nul
             setFocus(0);
             focusRef.current = 0;
           }}
-          focus={focus}
           nav={nav}
         />
       )}
@@ -819,6 +1072,7 @@ export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | nul
       {playing && (
         <>
           <div className="crosshair" data-aim={gameState.aiming ? "1" : "0"} />
+          {gameState.prompt ? <div className="use-prompt">{gameState.prompt} · E / X</div> : null}
           <div className="hud-top">
             <div className="hud-chip">
               <span className="hud-label">Player</span>
@@ -888,6 +1142,21 @@ export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | nul
             }}
           />
           <div className="touch-actions">
+            <button
+              type="button"
+              className="touch-btn"
+              onPointerDown={() => {
+                mouse.useHeld = true;
+              }}
+              onPointerUp={() => {
+                mouse.useHeld = false;
+              }}
+              onPointerCancel={() => {
+                mouse.useHeld = false;
+              }}
+            >
+              Action
+            </button>
             <button
               type="button"
               className="touch-btn"

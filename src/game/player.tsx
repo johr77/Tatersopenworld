@@ -8,10 +8,10 @@ import { clone as cloneSkinned } from "three/addons/utils/SkeletonUtils.js";
 import { consumeLook, edges, initInput, mouse, sampleActions, setForcedKeys, settings } from "./input";
 import { gameState } from "./state";
 import { playChop, playEmpty, playGunshot, playImpact, playSwoosh, playTreeFall } from "./audio";
-import { collectWood } from "./inventory";
+import { collectStrand, collectWood } from "./inventory";
 import { saveCurrentInventory } from "./profiles";
 import { resolveCircle } from "./world-data";
-import { nearestToolTarget, TOOL_SNAP_RANGE } from "./tools";
+import { nearestToolTarget, nearestUseTarget, TOOL_SNAP_RANGE } from "./tools";
 import { attachWeapons, WEAPONS, type WeaponHandle } from "./weapon";
 import { isFemaleLook, lookDef, LOOKS, type LookId } from "./profiles";
 import { applyHairVisibility, applyHeadOnly, applyLoadout, installHeadOnly, isHeadMesh, OUTFIT_FILES, wearOutfits } from "./wardrobe";
@@ -940,7 +940,19 @@ export function Player() {
     gameState.reloading = reloadT.current > 0;
     gameState.magSize = def.mag;
     gameState.pad = actions.padActive;
-    if (edges.menu) gameState.menuPulse = true;
+    const useT = nearestUseTarget(scene, pos.current, fwd.current, TOOL_SNAP_RANGE);
+    gameState.prompt = useT ? "Pick weed" : "";
+    if (edges.use && useT) {
+      const ok = useT.userData.use() as boolean;
+      if (ok) {
+        collectStrand(gameState.inventory);
+        saveCurrentInventory();
+        useT.getWorldPosition(_chopFrom);
+        const dx = _chopFrom.x - pos.current.x;
+        const dz = _chopFrom.z - pos.current.z;
+        yaw.current = Math.atan2(-dx, -dz);
+      }
+    }
   });
 
   return (

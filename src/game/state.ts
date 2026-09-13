@@ -37,6 +37,7 @@ export const gameState = {
   padId: "",
   menuPulse: false,
   weapon: "Rifle",
+  prompt: "",
 };
 
 declare global {

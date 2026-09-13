@@ -8,6 +8,7 @@ import {
   MEGA_TREE_FILES,
   TARGETS,
   TREES,
+  WEEDS,
   markFallen,
   type BuildKind,
   type TreePlace,
@@ -15,6 +16,7 @@ import {
 import { loadBuild } from "./props";
 
 for (const file of MEGA_TREE_FILES) useGLTF.preload(`/models/nature/${file}.gltf`);
+useGLTF.preload("/models/nature/Grass_Wispy_Tall.gltf");
 
 function ChopPine({ tree }: { tree: TreePlace }) {
   const { scene } = useGLTF(`/models/nature/${tree.file}.gltf`);
@@ -55,6 +57,31 @@ function ChopPine({ tree }: { tree: TreePlace }) {
   return (
     <group ref={ref} position={[tree.x, 0, tree.z]} rotation={[0, tree.rot, 0]} scale={tree.scale} userData={data}>
       <Clone object={scene} castShadow receiveShadow />
+    </group>
+  );
+}
+
+function PickWeed({ weed }: { weed: (typeof WEEDS)[number] }) {
+  const { scene } = useGLTF("/models/nature/Grass_Wispy_Tall.gltf");
+  const ref = useRef<THREE.Group>(null);
+  const gone = useRef(false);
+  const data = useMemo(
+    () => ({
+      use: () => {
+        if (gone.current || !ref.current) return false;
+        gone.current = true;
+        ref.current.visible = false;
+        ref.current.traverse((o) => {
+          o.raycast = () => {};
+        });
+        return true;
+      },
+    }),
+    [],
+  );
+  return (
+    <group ref={ref} position={[weed.x, 0, weed.z]} rotation={[0, weed.rot, 0]} scale={weed.scale} userData={data}>
+      <Clone object={scene} />
     </group>
   );
 }
@@ -267,6 +294,9 @@ export function World() {
       <Ground />
       {MEGA_TREE_FILES.map((file) => (
         <MegaKind key={`mega-${file}`} file={file} items={TREES} />
+      ))}
+      {WEEDS.map((w) => (
+        <PickWeed key={`weed-${w.id}`} weed={w} />
       ))}
       <RangeTargets />
     </>

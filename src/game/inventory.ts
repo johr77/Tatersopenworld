@@ -1,4 +1,4 @@
-export type ItemId = "wood";
+export type ItemId = "wood" | "strand";
 
 export type InvSlot = { id: ItemId; count: number } | null;
 
@@ -7,6 +7,7 @@ export const WOOD_PER_TREE = 10;
 
 export const ITEM_LABEL: Record<ItemId, string> = {
   wood: "Wood",
+  strand: "Strand",
 };
 
 export function emptyInventory(): InvSlot[] {
@@ -18,7 +19,7 @@ export function migrateInventory(raw: InvSlot[] | undefined): InvSlot[] {
   if (!Array.isArray(raw)) return inv;
   for (let i = 0; i < INV_SIZE; i++) {
     const s = raw[i];
-    if (s && s.id === "wood" && s.count > 0) inv[i] = { id: s.id, count: s.count };
+    if (s && (s.id === "wood" || s.id === "strand") && s.count > 0) inv[i] = { id: s.id, count: s.count };
   }
   return inv;
 }
@@ -37,4 +38,8 @@ export function addItem(inv: InvSlot[], id: ItemId, count: number) {
 
 export function collectWood(inv: InvSlot[], count = WOOD_PER_TREE) {
   return addItem(inv, "wood", count);
+}
+
+export function collectStrand(inv: InvSlot[], count = 1) {
+  return addItem(inv, "strand", count);
 }

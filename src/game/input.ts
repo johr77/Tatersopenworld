@@ -17,6 +17,7 @@ export type ActionId =
   | "freeLook"
   | "alignCam"
   | "menu"
+  | "use"
   | "nextWeapon"
   | "prevWeapon";
 
@@ -37,6 +38,7 @@ export const ACTION_LABELS: Record<ActionId, string> = {
   freeLook: "Free look",
   alignCam: "Align camera",
   menu: "Options",
+  use: "Action",
   nextWeapon: "Next weapon",
   prevWeapon: "Prev weapon",
 };
@@ -70,16 +72,17 @@ export const DEFAULT_BINDINGS: Record<ActionId, Binding> = {
   sprint: { keys: ["ShiftLeft", "ShiftRight"], buttons: [10, 5] },
   fire: { keys: [], buttons: [7] },
   aim: { keys: [], buttons: [6] },
-  reload: { keys: ["KeyR"], buttons: [2] },
-  toggleView: { keys: ["KeyV"], buttons: [3] },
+  reload: { keys: ["KeyR"], buttons: [3] },
+  toggleView: { keys: ["KeyV"], buttons: [8] },
   freeLook: { keys: ["AltLeft", "AltRight", "KeyQ"], buttons: [] },
   alignCam: { keys: ["KeyZ"], buttons: [11] },
   menu: { keys: ["Tab"], buttons: [9] },
+  use: { keys: ["KeyE"], buttons: [2] },
   nextWeapon: { keys: ["BracketRight", "Period"], buttons: [15, 12, 4] },
   prevWeapon: { keys: ["BracketLeft", "Comma"], buttons: [14, 13] },
 };
 
-const STORAGE = "taters.binds.v3";
+const STORAGE = "taters.binds.v4";
 
 export const settings = {
   bindings: structuredClone(DEFAULT_BINDINGS) as Record<ActionId, Binding>,
@@ -144,10 +147,9 @@ export function prettyKey(code: string) {
     .replace("AltRight", "Alt");
 }
 
-export function prettyBinding(id: ActionId) {
+export function prettyKeys(id: ActionId) {
   const b = settings.bindings[id];
-  const keys = b.keys.map(prettyKey);
-  const pads = b.buttons.map((n) => PAD_BUTTON_NAMES[n] ?? `Btn ${n}`);
+  const names = b.keys.map(prettyKey);
   const extra =
     id === "fire"
       ? ["LMB"]
@@ -158,14 +160,29 @@ export function prettyBinding(id: ActionId) {
           : id === "prevWeapon"
             ? ["Wheel up"]
             : [];
-  return [...keys, ...extra, ...pads].filter(Boolean).join(" · ") || "Unbound";
+  return [...names, ...extra].filter(Boolean).join(" · ") || "Unbound";
+}
+
+export function prettyPad(id: ActionId) {
+  const pads = settings.bindings[id].buttons.map((n) => PAD_BUTTON_NAMES[n] ?? `Btn ${n}`);
+  if (id === "forward" || id === "back" || id === "left" || id === "right") return "Left stick";
+  return pads.join(" · ") || "Unbound";
+}
+
+export function prettyBinding(id: ActionId) {
+  const parts = [prettyKeys(id), prettyPad(id)].filter((s) => s && s !== "Unbound");
+  return parts.join(" · ") || "Unbound";
 }
 
 const keys = new Set<string>();
 let forced: Set<string> | null = null;
 let muted = false;
 let rebindTo: ActionId | null = null;
+let rebindKind: "key" | "button" | "any" = "any";
 let onRebind: ((label: string) => void) | null = null;
+const rebindHeld = new Set<number>();
+const navSuppress = new Set<number>();
+let rebindArm = 0;
 let wheelDir = 0;
 
 export const mouse = {
@@ -176,6 +193,7 @@ export const mouse = {
   lookY: 0,
   fireHeld: false,
   aimHeld: false,
+  useHeld: false,
 };
 
 export const touchMove = { x: 0, y: 0 };
@@ -196,18 +214,31 @@ export function isRebinding() {
   return rebindTo !== null;
 }
 
-export function beginRebind(id: ActionId, cb?: (label: string) => void) {
+export function beginRebind(id: ActionId, cb?: (label: string) => void, kind: "key" | "button" | "any" = "any") {
   rebindTo = id;
+  rebindKind = kind;
   onRebind = cb ?? null;
+  rebindHeld.clear();
+  rebindArm = performance.now() + 180;
+  const pad = firstPad();
+  if (pad) {
+    for (let i = 0; i < pad.buttons.length; i++) {
+      if (pad.buttons[i]?.pressed || (pad.buttons[i]?.value ?? 0) > 0.5) rebindHeld.add(i);
+    }
+  }
 }
 
 export function cancelRebind() {
   rebindTo = null;
+  rebindKind = "any";
   onRebind = null;
+  rebindHeld.clear();
+  rebindArm = 0;
 }
 
 function applyRebind(kind: "key" | "button", value: string | number) {
   if (!rebindTo) return;
+  if (rebindKind !== "any" && rebindKind !== kind) return;
   const b = settings.bindings[rebindTo];
   if (kind === "key") {
     const code = value as string;
@@ -221,10 +252,14 @@ function applyRebind(kind: "key" | "button", value: string | number) {
       settings.bindings[id].buttons = settings.bindings[id].buttons.filter((n) => n !== btn);
     }
     b.buttons = [btn];
+    navSuppress.add(btn);
   }
   saveSettings();
   const label = prettyBinding(rebindTo);
   rebindTo = null;
+  rebindKind = "any";
+  rebindHeld.clear();
+  rebindArm = 0;
   onRebind?.(label);
   onRebind = null;
 }
@@ -260,12 +295,14 @@ export function initInput() {
     keys.clear();
     mouse.fireHeld = false;
     mouse.aimHeld = false;
+    mouse.useHeld = false;
   };
   const dropLock = () => {
     mouse.locked = false;
     gameState.locked = false;
     mouse.fireHeld = false;
     mouse.aimHeld = false;
+    mouse.useHeld = false;
   };
 
   window.addEventListener("keydown", onDown);
@@ -394,6 +431,7 @@ export type Actions = {
   freeLook: boolean;
   alignCam: boolean;
   menu: boolean;
+  use: boolean;
   weaponSlot: number | null;
   nextWeapon: boolean;
   prevWeapon: boolean;
@@ -409,6 +447,7 @@ const prev = {
   toggleView: false,
   alignCam: false,
   menu: false,
+  use: false,
   nextWeapon: false,
   prevWeapon: false,
 };
@@ -420,6 +459,7 @@ export const edges = {
   toggleView: false,
   alignCam: false,
   menu: false,
+  use: false,
   nextWeapon: false,
   prevWeapon: false,
 };
@@ -429,12 +469,17 @@ export function sampleActions(): Actions {
   refreshPadMeta();
   const blocked = muted && !forced;
 
-  if (rebindTo && pad) {
+  if (rebindTo && pad && (rebindKind === "button" || rebindKind === "any")) {
+    const now = performance.now();
     for (let i = 0; i < pad.buttons.length; i++) {
-      if (pad.buttons[i]?.pressed) {
-        applyRebind("button", i);
-        break;
+      const down = !!(pad.buttons[i]?.pressed || (pad.buttons[i]?.value ?? 0) > 0.5);
+      if (!down) {
+        rebindHeld.delete(i);
+        continue;
       }
+      if (now < rebindArm || rebindHeld.has(i)) continue;
+      applyRebind("button", i);
+      break;
     }
   }
 
@@ -482,6 +527,7 @@ export function sampleActions(): Actions {
   const freeLook = !blocked && actionDown("freeLook", pad);
   const alignCam = !blocked && actionDown("alignCam", pad);
   const menu = actionDown("menu", pad);
+  const use = !blocked && (mouse.useHeld || actionDown("use", pad));
   let weaponSlot: number | null = null;
   if (!blocked) {
     if (isDown("Digit1") || isDown("Numpad1")) weaponSlot = 0;
@@ -499,6 +545,7 @@ export function sampleActions(): Actions {
   edges.toggleView = toggleView && !prev.toggleView;
   edges.alignCam = alignCam && !prev.alignCam;
   edges.menu = menu && !prev.menu;
+  edges.use = use && !prev.use;
   edges.nextWeapon = nextHeld && !prev.nextWeapon;
   edges.prevWeapon = prevHeld && !prev.prevWeapon;
   prev.jump = jump;
@@ -507,6 +554,7 @@ export function sampleActions(): Actions {
   prev.toggleView = toggleView;
   prev.alignCam = alignCam;
   prev.menu = menu;
+  prev.use = use;
   prev.nextWeapon = nextHeld;
   prev.prevWeapon = prevHeld;
 
@@ -523,6 +571,7 @@ export function sampleActions(): Actions {
     freeLook,
     alignCam,
     menu,
+    use,
     weaponSlot,
     nextWeapon: nextHeld,
     prevWeapon: prevHeld,
@@ -544,9 +593,12 @@ export function consumeLook() {
 }
 
 const menuPrev = { up: false, down: false, left: false, right: false, ok: false, back: false, menu: false };
+let stickHeldAt = 0;
 let stickArm = 0;
+let navSeq = 0;
 
 export type MenuNav = {
+  seq: number;
   up: boolean;
   down: boolean;
   left: boolean;
@@ -568,30 +620,65 @@ export function pollMenu(): MenuNav {
   let menuBtn = false;
   if (pad) {
     const b = pad.buttons;
-    up = !!b[12]?.pressed;
-    down = !!b[13]?.pressed;
-    left = !!b[14]?.pressed;
-    right = !!b[15]?.pressed;
+    const dpadY = pad.axes[7] ?? 0;
+    const dpadX = pad.axes[6] ?? 0;
+    const dpadUp = !!b[12]?.pressed || dpadY < -0.5;
+    const dpadDown = !!b[13]?.pressed || dpadY > 0.5;
+    const dpadLeft = !!b[14]?.pressed || dpadX < -0.5;
+    const dpadRight = !!b[15]?.pressed || dpadX > 0.5;
+    up = dpadUp;
+    down = dpadDown;
+    left = dpadLeft;
+    right = dpadRight;
     ok = !!b[0]?.pressed;
     back = !!b[1]?.pressed;
-    menuBtn = !!b[9]?.pressed || !!b[8]?.pressed;
+    menuBtn = !!b[9]?.pressed;
+    if (rebindTo && rebindKind !== "key") {
+      up = false;
+      down = false;
+      left = false;
+      right = false;
+      ok = false;
+      back = false;
+      menuBtn = false;
+    }
+    for (const i of [...navSuppress]) {
+      const held = !!(b[i]?.pressed || (b[i]?.value ?? 0) > 0.5);
+      if (!held) navSuppress.delete(i);
+      else {
+        if (i === 0) ok = false;
+        if (i === 1) back = false;
+        if (i === 8 || i === 9) menuBtn = false;
+      }
+    }
     const sx = pad.axes[0] ?? 0;
     const sy = pad.axes[1] ?? 0;
     const now = performance.now();
-    const dz = 0.55;
-    if (Math.abs(sx) > dz || Math.abs(sy) > dz) {
-      if (now > stickArm) {
+    const dz = 0.75;
+    const usingDpad = dpadUp || dpadDown || dpadLeft || dpadRight;
+    if (!usingDpad && (Math.abs(sx) > dz || Math.abs(sy) > dz)) {
+      if (stickHeldAt === 0) {
+        stickHeldAt = now;
+        stickArm = now + 520;
         if (sy < -dz) up = true;
         else if (sy > dz) down = true;
         if (sx < -dz) left = true;
         else if (sx > dz) right = true;
-        stickArm = now + 220;
+      } else if (now > stickArm) {
+        stickArm = now + 420;
+        if (sy < -dz) up = true;
+        else if (sy > dz) down = true;
+        if (sx < -dz) left = true;
+        else if (sx > dz) right = true;
       }
-    } else {
+    } else if (!usingDpad) {
+      stickHeldAt = 0;
       stickArm = 0;
     }
   }
+  if (!rebindTo && isDown("Tab")) menuBtn = true;
   const nav: MenuNav = {
+    seq: 0,
     up: up && !menuPrev.up,
     down: down && !menuPrev.down,
     left: left && !menuPrev.left,
@@ -607,6 +694,10 @@ export function pollMenu(): MenuNav {
   menuPrev.ok = ok;
   menuPrev.back = back;
   menuPrev.menu = menuBtn;
+  if (nav.up || nav.down || nav.left || nav.right || nav.ok || nav.back || nav.menu) {
+    navSeq += 1;
+    nav.seq = navSeq;
+  }
   return nav;
 }
 
