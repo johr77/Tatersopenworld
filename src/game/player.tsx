@@ -14,7 +14,7 @@ import { resolveCircle } from "./world-data";
 import { nearestToolTarget, nearestUseTarget, TOOL_SNAP_RANGE } from "./tools";
 import { attachWeapons, WEAPONS, type WeaponHandle } from "./weapon";
 import { isFemaleLook, lookDef, LOOKS, type LookId } from "./profiles";
-import { applyHairVisibility, applyHeadOnly, applyLoadout, installHeadOnly, isHeadMesh, OUTFIT_FILES, wearOutfits } from "./wardrobe";
+import { applyHairVisibility, applyHeadOnly, applyLoadout, installHeadOnly, isHairMesh, isHeadMesh, OUTFIT_FILES, wearOutfits } from "./wardrobe";
 
 for (const row of LOOKS) useGLTF.preload(row.file);
 useGLTF.preload("/models/ual2.glb");
@@ -58,6 +58,7 @@ const CLIP = {
   jumpLand: "Jump_Land",
   shoot: "Pistol_Shoot",
   chop: "TreeChopping_Loop",
+  pick: "Farm_Harvest",
   reload: "Pistol_Reload",
   aim: "Pistol_Aim_Neutral",
   aimUp: "Pistol_Aim_Up",
@@ -193,7 +194,7 @@ function cloneMats(mesh: THREE.Mesh) {
 }
 
 function prepBaseMesh(m: THREE.Mesh) {
-  if (isHeadMesh(m) || m.name.startsWith("Hit_")) return;
+  if (isHeadMesh(m) || isHairMesh(m) || m.name.startsWith("Hit_")) return;
   const mats = Array.isArray(m.material) ? m.material : [m.material];
   for (const raw of mats) {
     const mat = raw as THREE.MeshStandardMaterial;
@@ -263,9 +264,21 @@ export function Player() {
     "hero-female": heroFemaleGltf,
   } as const;
   const gltf = scenes[look] ?? maleGltf;
-  const selected = lookDef(look);
   const female = isFemaleLook(look);
-  const body = useMemo(() => cloneSkinned(gltf.scene), [gltf.scene, look]);
+  const body = useMemo(() => {
+    const b = cloneSkinned(gltf.scene);
+    resetBind(b);
+    if (lookDef(look).paint) paintMannequin(b, isFemaleLook(look));
+    else dressCharacter(b);
+    const meshes: THREE.Mesh[] = [];
+    b.traverse((o) => {
+      const m = o as THREE.Mesh;
+      if (m.isMesh) meshes.push(m);
+    });
+    b.updateMatrixWorld(true);
+    applyHeadOnly(meshes);
+    return b;
+  }, [gltf.scene, look]);
   const controller = useMemo(
     () => makeController(body, [...maleGltf.animations, ...ual2.animations]),
     [body, maleGltf.animations, ual2.animations],
@@ -313,6 +326,7 @@ export function Player() {
   const reserve = useRef(WEAPONS[1].reserve);
   const weaponI = useRef(1);
   const shootHold = useRef(0);
+  const pickHold = useRef(0);
   const flash = useRef(0);
   const camPos = useRef(new THREE.Vector3(0, 1.6, 14));
   const fwd = useRef(new THREE.Vector3());
@@ -331,15 +345,12 @@ export function Player() {
     initInput();
     controller.mixer.stopAllAction();
     resetBind(body);
-    if (selected.paint) paintMannequin(body, look === "female");
-    else dressCharacter(body);
     for (const mesh of clothes.current) mesh.removeFromParent();
     baseMeshes.current = [];
     body.traverse((o) => {
       const m = o as THREE.Mesh;
       if (m.isMesh) baseMeshes.current.push(m);
     });
-    applyHeadOnly(baseMeshes.current);
     clothes.current = wearOutfits(body, female ? [femalePeasant.scene, femaleRanger.scene] : [malePeasant.scene, maleRanger.scene]);
     applyLoadout(clothes.current, gameState.loadout);
     applyHairVisibility(baseMeshes.current, gameState.loadout.head === "ranger");
@@ -427,7 +438,7 @@ export function Player() {
       weapons.current?.dispose();
       weapons.current = null;
     };
-  }, [body, camera, controller, look, selected.paint, female, femalePeasant.scene, femaleRanger.scene, malePeasant.scene, maleRanger.scene]);
+  }, [body, camera, controller, look, female, femalePeasant.scene, femaleRanger.scene, malePeasant.scene, maleRanger.scene]);
 
   useEffect(() => {
     return () => {
@@ -753,6 +764,8 @@ export function Player() {
     weapons.current?.setLowered(!aiming && shootHold.current <= 0);
 
     const chopping = Boolean(def.melee && shootHold.current > 0);
+    const picking = pickHold.current > 0;
+    if (picking) pickHold.current = Math.max(0, pickHold.current - dt);
     let loco = CLIP.idle;
     if (!grounded.current) {
       controller.lower.setBackpedal(false);
@@ -763,6 +776,9 @@ export function Player() {
       controller.lower.play(CLIP.jumpLand, 0.05);
     } else if (chopping) {
       controller.lower.play(CLIP.chop, 0.08);
+      controller.lower.setBackpedal(false);
+    } else if (picking) {
+      controller.lower.play(CLIP.pick, 0.08);
       controller.lower.setBackpedal(false);
     } else {
       landHold.current = 0;
@@ -778,6 +794,7 @@ export function Player() {
 
     if (reloadT.current > 0) controller.upper.play(CLIP.reload, 0.08);
     else if (chopping) controller.upper.play(CLIP.chop, 0.08);
+    else if (picking) controller.upper.play(CLIP.pick, 0.08);
     else if (shootHold.current > 0) controller.upper.play(CLIP.shoot, 0.05);
     else if (aiming || fps) controller.setAimPitch(pitch.current + recoil.current);
     else if (!grounded.current) {
@@ -947,10 +964,16 @@ export function Player() {
       if (ok) {
         collectStrand(gameState.inventory);
         saveCurrentInventory();
+        controller.lower.play(CLIP.pick, 0.06, true);
+        controller.upper.play(CLIP.pick, 0.06, true);
+        const clip = controller.upper.get(CLIP.pick)?.getClip() ?? controller.lower.get(CLIP.pick)?.getClip();
+        const dur = clip?.duration || 1.1;
+        pickHold.current = dur;
+        useT.userData.pull?.(dur * 0.48);
         useT.getWorldPosition(_chopFrom);
         const dx = _chopFrom.x - pos.current.x;
         const dz = _chopFrom.z - pos.current.z;
-        yaw.current = Math.atan2(-dx, -dz);
+        if (dx * dx + dz * dz > 0.25) yaw.current = Math.atan2(-dx, -dz);
       }
     }
   });

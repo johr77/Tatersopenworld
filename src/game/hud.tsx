@@ -582,7 +582,7 @@ function Creator({
   nav: MenuNav | null;
 }) {
   const [name, setName] = useState("");
-  const [look, setLook] = useState<LookId>(gameState.look);
+  const [look, setLook] = useState<LookId>("hero-female");
   const [focus, setFocus] = useState(0);
   const seen = useRef(nav?.seq ?? 0);
   const focusRef = useRef(0);
@@ -1030,7 +1030,7 @@ export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | nul
           players={players}
           onPlay={start}
           onNew={() => {
-            gameState.look = gameState.look || "hero-male";
+            gameState.look = "hero-female";
             setScreen("create");
             setFocus(0);
             focusRef.current = 0;

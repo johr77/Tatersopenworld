@@ -13,7 +13,7 @@ export function isToolMaterial(obj: THREE.Object3D, toolId: string) {
 }
 
 export function isUseTarget(obj: THREE.Object3D) {
-  return typeof obj.userData?.use === "function";
+  return typeof obj.userData?.use === "function" && !obj.userData?.picked;
 }
 
 /** Closest in-front Action target (weeds now, doors later). */
@@ -36,7 +36,15 @@ export function nearestUseTarget(
     const dx = _to.x - origin.x;
     const dz = _to.z - origin.z;
     const d2 = dx * dx + dz * dz;
-    if (d2 > range * range || d2 < 0.04) return;
+    if (d2 > range * range) return;
+    if (d2 < 0.72 * 0.72) {
+      const close = 3 - Math.sqrt(d2);
+      if (close > bestScore) {
+        bestScore = close;
+        best = o;
+      }
+      return;
+    }
     const d = Math.sqrt(d2);
     const dot = (dx / d) * nx + (dz / d) * nz;
     if (dot > bestScore) {

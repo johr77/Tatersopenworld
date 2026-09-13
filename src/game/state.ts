@@ -9,7 +9,7 @@ export const gameState = {
   locked: false,
   playing: false,
   setup: false,
-  look: "hero-male" as LookId,
+  look: "hero-female" as LookId,
   loadout: emptyLoadout() as Loadout,
   inventory: emptyInventory() as InvSlot[],
   playerId: "",

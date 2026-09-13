@@ -127,7 +127,6 @@ const NECK_BONE = /neck/i;
 const TORSO_BONE = /spine|clavicle|shoulder|pelvis/i;
 
 export function installHeadOnly(mat: THREE.MeshStandardMaterial) {
-  if (mat.userData.headOnly) return;
   mat.userData.headOnly = true;
   mat.onBeforeCompile = (shader) => {
     shader.vertexShader = shader.vertexShader.replace(
@@ -152,11 +151,13 @@ export function installHeadOnly(mat: THREE.MeshStandardMaterial) {
        if (vHeadKeep < 0.42) discard;`,
     );
   };
-  mat.customProgramCacheKey = () => "head-only-attr";
+  mat.customProgramCacheKey = () => `head-keep-${mat.uuid}`;
   mat.needsUpdate = true;
 }
 
 function bakeHeadKeep(mesh: THREE.SkinnedMesh) {
+  if (mesh.geometry.getAttribute("headKeep")) return;
+  mesh.geometry = mesh.geometry.clone();
   const geo = mesh.geometry;
   const pos = geo.getAttribute("position");
   if (!pos) return;
