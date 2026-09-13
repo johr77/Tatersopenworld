@@ -7,10 +7,11 @@ import * as THREE from "three";
 import { clone as cloneSkinned } from "three/addons/utils/SkeletonUtils.js";
 import { consumeLook, edges, initInput, mouse, sampleActions, setForcedKeys, settings } from "./input";
 import { gameState } from "./state";
-import { playChop, playEmpty, playGunshot, playImpact, playTreeFall } from "./audio";
+import { playChop, playEmpty, playGunshot, playImpact, playSwoosh, playTreeFall } from "./audio";
 import { collectWood } from "./inventory";
 import { saveCurrentInventory } from "./profiles";
 import { resolveCircle } from "./world-data";
+import { nearestToolTarget, TOOL_SNAP_RANGE } from "./tools";
 import { attachWeapons, WEAPONS, type WeaponHandle } from "./weapon";
 import { isFemaleLook, lookDef, LOOKS, type LookId } from "./profiles";
 import { applyHairVisibility, applyHeadOnly, applyLoadout, installHeadOnly, isHeadMesh, OUTFIT_FILES, wearOutfits } from "./wardrobe";
@@ -634,36 +635,77 @@ export function Player() {
           fireCd.current = def.fireCd;
           recoil.current += def.recoil;
           shootHold.current = 0.95;
-          playChop();
           controller.lower.play(CLIP.chop, 0.05, true);
           controller.upper.play(CLIP.chop, 0.05, true);
           ray.current.layers.enableAll();
           ray.current.setFromCamera(ndc.current, camera);
           const hits = ray.current.intersectObjects(scene.children, true);
-          const reachFrom = _chopFrom.set(pos.current.x, pos.current.y + 1.1, pos.current.z);
-          const hit = hits.find((h) => {
-            const d = h.point.distanceTo(reachFrom);
-            if (d > 2.9 || d < 0.35) return false;
-            let o: THREE.Object3D | null = h.object;
-            while (o) {
-              if (o === body || o === viewmodel.current?.root || o === weapons.current?.root) return false;
-              o = o.parent;
-            }
-            return true;
-          });
-          if (hit) {
-            let o: THREE.Object3D | null = hit.object;
-            while (o) {
-              if (o.userData?.tree && o.userData.chop) {
-                const r = o.userData.chop() as "hit" | "fell" | "gone";
-                if (r === "fell") {
-                  playTreeFall();
-                  if (collectWood(gameState.inventory)) saveCurrentInventory();
-                }
+          let hitTree: THREE.Object3D | null = null;
+          for (const h of hits) {
+            let kind: "skip" | "tree" | "solid" = "solid";
+            let treeObj: THREE.Object3D | null = null;
+            for (let o: THREE.Object3D | null = h.object; o; o = o.parent) {
+              if (!o.visible) {
+                kind = "skip";
                 break;
               }
-              o = o.parent;
+              if (o === body || o === viewmodel.current?.root || o === weapons.current?.root) {
+                kind = "skip";
+                break;
+              }
+              if (o.name === "Ground" || o.userData?.ground) {
+                kind = "skip";
+                break;
+              }
+              if (o.userData?.tree && typeof o.userData.chop === "function") {
+                treeObj = o;
+                kind = "tree";
+                break;
+              }
             }
+            if (kind === "skip") continue;
+            if (kind !== "tree" || !treeObj) break;
+            treeObj.getWorldPosition(_chopFrom);
+            const dx = pos.current.x - _chopFrom.x;
+            const dz = pos.current.z - _chopFrom.z;
+            if (dx * dx + dz * dz > 3.2 * 3.2) break;
+            hitTree = treeObj;
+            break;
+          }
+          let applied = false;
+          if (hitTree) {
+            const r = hitTree.userData.chop() as "hit" | "fell" | "gone";
+            if (r === "gone") hitTree = null;
+            else applied = true;
+            if (r === "fell") {
+              playTreeFall();
+              if (collectWood(gameState.inventory)) saveCurrentInventory();
+            }
+          }
+          if (!hitTree && def.tool) {
+            hitTree = nearestToolTarget(scene, pos.current, fwd.current, def.id, TOOL_SNAP_RANGE);
+          }
+          if (hitTree) {
+            hitTree.getWorldPosition(_chopFrom);
+            const dx = _chopFrom.x - pos.current.x;
+            const dz = _chopFrom.z - pos.current.z;
+            yaw.current = Math.atan2(-dx, -dz);
+            const horiz = Math.hypot(dx, dz) || 1;
+            pitch.current = THREE.MathUtils.clamp(
+              Math.atan2(1.15 - eye.current, horiz),
+              -PITCH_LIM,
+              PITCH_LIM,
+            );
+            if (!applied) {
+              const r = hitTree.userData.chop() as "hit" | "fell" | "gone";
+              if (r === "fell") {
+                playTreeFall();
+                if (collectWood(gameState.inventory)) saveCurrentInventory();
+              }
+            }
+            playChop();
+          } else {
+            playSwoosh();
           }
         }
       } else if (ammo.current <= 0) playEmpty();

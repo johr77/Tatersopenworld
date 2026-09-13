@@ -46,6 +46,9 @@ function ChopPine({ tree }: { tree: TreePlace }) {
     if (t >= 1) {
       gone.current = true;
       ref.current.visible = false;
+      ref.current.traverse((o) => {
+        o.raycast = () => {};
+      });
     }
   });
 
@@ -78,7 +81,7 @@ function Ground() {
   }, []);
   return (
     <group>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+      <mesh name="Ground" userData={{ ground: true }} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[160, 160]} />
         <meshStandardMaterial map={grass} roughness={0.95} metalness={0} color="#6e7f58" />
       </mesh>

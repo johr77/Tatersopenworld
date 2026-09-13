@@ -153,6 +153,35 @@ export function playTreeFall() {
   osc.stop(t + 1.2);
 }
 
+export function playSwoosh() {
+  const ac = getCtx();
+  if (!ac) return;
+  const t = ac.currentTime;
+  const dur = 0.22;
+  const noise = ac.createBuffer(1, Math.floor(ac.sampleRate * dur), ac.sampleRate);
+  const data = noise.getChannelData(0);
+  for (let i = 0; i < data.length; i++) {
+    const u = i / data.length;
+    const env = Math.pow(u, 0.35) * Math.pow(1 - u, 1.4);
+    data[i] = (Math.random() * 2 - 1) * env;
+  }
+  const src = ac.createBufferSource();
+  src.buffer = noise;
+  const filter = ac.createBiquadFilter();
+  filter.type = "bandpass";
+  filter.Q.value = 0.7;
+  filter.frequency.setValueAtTime(1800, t);
+  filter.frequency.exponentialRampToValueAtTime(420, t + dur);
+  const g = ac.createGain();
+  g.gain.setValueAtTime(0.001, t);
+  g.gain.exponentialRampToValueAtTime(0.28, t + 0.03);
+  g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  src.connect(filter);
+  filter.connect(g);
+  g.connect(ac.destination);
+  src.start(t);
+}
+
 export function playEmpty() {
   const ac = getCtx();
   if (!ac) return;
