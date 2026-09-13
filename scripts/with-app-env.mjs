@@ -22,7 +22,7 @@
 import { spawn } from "node:child_process";
 import { readFileSync, realpathSync } from "node:fs";
 import { constants as osConstants } from "node:os";
-import { dirname, join } from "node:path";
+import { delimiter, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const APP_ENV_REL_PATH = ".grok/app-env.json";
@@ -104,14 +104,48 @@ export function isMainModule(moduleUrl) {
   }
 }
 
+/** PATH plus this workspace's `node_modules/.bin`, so `vite` resolves without npm. */
+export function envWithLocalBin(env) {
+  const bin = join(projectRoot(), "node_modules", ".bin");
+  const current = env.PATH || env.Path || "";
+  const parts = current.split(delimiter).filter(Boolean);
+  const prefixed = parts.includes(bin) ? current : [bin, ...parts].join(delimiter);
+  return { ...env, PATH: prefixed, Path: prefixed };
+}
+
+function quoteCmdArg(arg) {
+  if (arg.length === 0) return '""';
+  if (!/[\t\n\r "&<>|^()]/.test(arg)) return arg;
+  return `"${String(arg).replace(/"/g, '\\"')}"`;
+}
+
+/**
+ * Spawn a CLI. On Windows, bare names like `vite` are npm `.cmd` shims;
+ * `spawn("vite")` looks for `vite.exe` and throws ENOENT. Route those through
+ * `cmd.exe /d /s /c` instead of `shell: true` (Node DEP0190). Absolute paths
+ * such as `process.execPath` stay direct so tests keep their quoting.
+ */
+function spawnCli(command, args, env) {
+  const options = { stdio: "inherit", env, windowsHide: true };
+  const windowsShim =
+    process.platform === "win32" && !/[\\/]/.test(command) && !/\.exe$/i.test(command);
+  if (!windowsShim) return spawn(command, args, options);
+  const comspec = env.ComSpec || process.env.ComSpec || "cmd.exe";
+  const cmdline = [command, ...args].map(quoteCmdArg).join(" ");
+  return spawn(comspec, ["/d", "/s", "/c", cmdline], {
+    ...options,
+    windowsVerbatimArguments: true,
+  });
+}
+
 function main(argv) {
   const [command, ...args] = argv;
   if (!command) {
     console.error("usage: node scripts/with-app-env.mjs <command> [args…]");
     process.exit(2);
   }
-  const env = mergeAppEnv(readAppEnv(projectRoot()), process.env);
-  const child = spawn(command, args, { stdio: "inherit", env });
+  const env = envWithLocalBin(mergeAppEnv(readAppEnv(projectRoot()), process.env));
+  const child = spawnCli(command, args, env);
   // The dev server is long-running and is stopped by signalling this wrapper.
   for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
     process.on(signal, () => child.kill(signal));

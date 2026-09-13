@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Environment } from "@react-three/drei";
+import { Clone, Environment, useGLTF } from "@react-three/drei";
 import { useFrame } from "@react-three/fiber";
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import * as THREE from "three";
 import {
   MEGA_TREE_FILES,
@@ -15,85 +14,10 @@ import {
 } from "./world-data";
 import { loadBuild } from "./props";
 
-const pineTemplates: Partial<Record<string, THREE.Object3D>> = {};
-const pineLoading: Partial<Record<string, Promise<THREE.Object3D>>> = {};
+for (const file of MEGA_TREE_FILES) useGLTF.preload(`/models/nature/${file}.gltf`);
 
-function fallbackPine() {
-  const g = new THREE.Group();
-  const trunk = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.16, 0.28, 2.4, 7),
-    new THREE.MeshStandardMaterial({ color: "#5a3a22", roughness: 0.92, metalness: 0 }),
-  );
-  trunk.position.y = 1.2;
-  trunk.castShadow = true;
-  const cone = new THREE.Mesh(
-    new THREE.ConeGeometry(1.35, 4.4, 8),
-    new THREE.MeshStandardMaterial({ color: "#355c38", roughness: 0.88, metalness: 0 }),
-  );
-  cone.position.y = 3.5;
-  cone.castShadow = true;
-  g.add(trunk, cone);
-  return g;
-}
-
-function loadPine(file: string) {
-  if (pineTemplates[file]) return Promise.resolve(pineTemplates[file]!);
-  if (!pineLoading[file]) {
-    pineLoading[file] = new Promise((resolve) => {
-      const loader = new GLTFLoader();
-      loader.load(
-        `/models/nature/${file}.gltf`,
-        (gltf) => {
-          const root = prepareScene(gltf.scene, true);
-          pineTemplates[file] = root;
-          resolve(root);
-        },
-        undefined,
-        () => {
-          const root = fallbackPine();
-          pineTemplates[file] = root;
-          resolve(root);
-        },
-      );
-    });
-  }
-  return pineLoading[file]!;
-}
-
-function prepareScene(src: THREE.Object3D, shadows = true) {
-  const root = src.clone(true);
-  root.traverse((obj) => {
-    const mesh = obj as THREE.Mesh;
-    if (!mesh.isMesh) return;
-    mesh.castShadow = shadows;
-    mesh.receiveShadow = shadows;
-    mesh.frustumCulled = false;
-    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-    mesh.material = mats.map((m) => {
-      const mat = (m as THREE.MeshStandardMaterial).clone();
-      mat.metalness = 0;
-      if (mat.map) {
-        mat.map.colorSpace = THREE.SRGBColorSpace;
-        mat.map.anisotropy = 2;
-      }
-      if (mat.alphaTest > 0 || /leaf|grass|bush|leaves/i.test(mat.name)) {
-        mat.alphaTest = 0.28;
-        mat.transparent = false;
-        mat.opacity = 1;
-        mat.side = THREE.DoubleSide;
-      } else {
-        mat.alphaTest = 0;
-        mat.transparent = false;
-        mat.opacity = 1;
-      }
-      mat.vertexColors = false;
-      return mat;
-    });
-  });
-  return root;
-}
-
-function ChopPine({ tree, object }: { tree: TreePlace; object: THREE.Object3D }) {
+function ChopPine({ tree }: { tree: TreePlace }) {
+  const { scene } = useGLTF(`/models/nature/${tree.file}.gltf`);
   const ref = useRef<THREE.Group>(null);
   const hp = useRef(4);
   const fallT = useRef(0);
@@ -127,32 +51,17 @@ function ChopPine({ tree, object }: { tree: TreePlace; object: THREE.Object3D })
 
   return (
     <group ref={ref} position={[tree.x, 0, tree.z]} rotation={[0, tree.rot, 0]} scale={tree.scale} userData={data}>
-      <primitive object={object} />
+      <Clone object={scene} castShadow receiveShadow />
     </group>
   );
 }
 
 function MegaKind({ file, items }: { file: string; items: TreePlace[] }) {
-  const [template, setTemplate] = useState<THREE.Object3D | null>(null);
-  useEffect(() => {
-    let live = true;
-    loadPine(file).then((g) => {
-      if (live) setTemplate(g);
-    });
-    return () => {
-      live = false;
-    };
-  }, [file]);
   const placed = items.filter((p) => p.file === file);
-  const clones = useMemo(() => {
-    if (!template) return [];
-    return placed.map(() => template.clone(true));
-  }, [template, placed.length]);
-  if (!template) return null;
   return (
     <group>
-      {placed.map((p, i) => (
-        <ChopPine key={`pine-${file}-${p.id}`} tree={p} object={clones[i]!} />
+      {placed.map((p) => (
+        <ChopPine key={`pine-${file}-${p.id}`} tree={p} />
       ))}
     </group>
   );

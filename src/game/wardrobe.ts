@@ -100,6 +100,9 @@ export function wearOutfits(body: THREE.Object3D, scenes: THREE.Object3D[]) {
         const mat = raw as THREE.MeshStandardMaterial;
         if (mat.map) mat.map.colorSpace = THREE.SRGBColorSpace;
         mat.depthWrite = true;
+        mat.polygonOffset = true;
+        mat.polygonOffsetFactor = -1;
+        mat.polygonOffsetUnits = -1;
       }
       mesh.removeFromParent();
       body.add(mesh);
@@ -111,10 +114,17 @@ export function wearOutfits(body: THREE.Object3D, scenes: THREE.Object3D[]) {
 
 export function isHeadMesh(mesh: THREE.Object3D) {
   const n = mesh.name.toLowerCase();
-  return n.includes("eye") || n.includes("brow");
+  return n.includes("face") || (n.includes("eye") && !n.includes("brow"));
 }
 
-const HEAD_BONE = /head|neck|jaw|face|eye|brow/i;
+export function isHairMesh(mesh: THREE.Object3D) {
+  const n = mesh.name.toLowerCase();
+  return n.includes("hair") || n.includes("brow");
+}
+
+const HEAD_BONE = /head|jaw|face/i;
+const NECK_BONE = /neck/i;
+const TORSO_BONE = /spine|clavicle|shoulder|pelvis/i;
 
 export function installHeadOnly(mat: THREE.MeshStandardMaterial) {
   if (mat.userData.headOnly) return;
@@ -150,28 +160,42 @@ function bakeHeadKeep(mesh: THREE.SkinnedMesh) {
   const geo = mesh.geometry;
   const pos = geo.getAttribute("position");
   if (!pos) return;
-  const arr = new Float32Array(pos.count);
+  const nVert = pos.count;
+  const arr = new Float32Array(nVert);
   const idx = geo.getAttribute("skinIndex");
   const wgt = geo.getAttribute("skinWeight");
   if (!idx || !wgt || !mesh.skeleton) {
     arr.fill(1);
-  } else {
-    const keep = new Uint8Array(mesh.skeleton.bones.length + 8);
-    mesh.skeleton.bones.forEach((b, i) => {
-      if (HEAD_BONE.test(b.name)) keep[i] = 1;
-    });
-    const ia = idx.array;
-    const wa = wgt.array;
-    const size = idx.itemSize;
-    for (let i = 0; i < pos.count; i++) {
-      let k = 0;
-      const base = i * size;
-      for (let j = 0; j < size; j++) {
-        const bi = Number(ia[base + j]) | 0;
-        if (bi >= 0 && keep[bi]) k += Number(wa[base + j]);
-      }
-      arr[i] = k;
+    geo.setAttribute("headKeep", new THREE.BufferAttribute(arr, 1));
+    return;
+  }
+  // Keep face + neck. Drop chest/shoulders even if they have a little neck weight
+  // (the female superhero mesh is face+suit in one piece).
+  const kind = new Uint8Array(mesh.skeleton.bones.length + 8);
+  mesh.skeleton.bones.forEach((b, i) => {
+    if (HEAD_BONE.test(b.name)) kind[i] = 1;
+    else if (NECK_BONE.test(b.name)) kind[i] = 2;
+    else if (TORSO_BONE.test(b.name)) kind[i] = 3;
+  });
+  const ia = idx.array;
+  const wa = wgt.array;
+  const size = idx.itemSize;
+  for (let i = 0; i < nVert; i++) {
+    let headW = 0;
+    let neckW = 0;
+    let torsoW = 0;
+    const base = i * size;
+    for (let j = 0; j < size; j++) {
+      const bi = Number(ia[base + j]) | 0;
+      const w = Number(wa[base + j]);
+      if (bi < 0) continue;
+      if (kind[bi] === 1) headW += w;
+      else if (kind[bi] === 2) neckW += w;
+      else if (kind[bi] === 3) torsoW += w;
     }
+    const face = headW > 0.28;
+    const neck = neckW > 0.4 && torsoW < 0.38 && neckW + headW > torsoW;
+    arr[i] = face || neck ? 1 : 0;
   }
   geo.setAttribute("headKeep", new THREE.BufferAttribute(arr, 1));
 }
@@ -189,5 +213,11 @@ export function applyLoadout(worn: THREE.SkinnedMesh[], loadout: Loadout) {
     const slot = slotOfMesh(mesh.name);
     const style = styleOfMesh(mesh.name);
     mesh.visible = Boolean(slot && loadout[slot] === style);
+  }
+}
+
+export function applyHairVisibility(meshes: THREE.Mesh[], hoodOn: boolean) {
+  for (const mesh of meshes) {
+    if (isHairMesh(mesh)) mesh.visible = !hoodOn;
   }
 }

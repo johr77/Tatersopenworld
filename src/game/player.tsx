@@ -13,7 +13,7 @@ import { saveCurrentInventory } from "./profiles";
 import { resolveCircle } from "./world-data";
 import { attachWeapons, WEAPONS, type WeaponHandle } from "./weapon";
 import { isFemaleLook, lookDef, LOOKS, type LookId } from "./profiles";
-import { applyHeadOnly, applyLoadout, installHeadOnly, isHeadMesh, OUTFIT_FILES, wearOutfits } from "./wardrobe";
+import { applyHairVisibility, applyHeadOnly, applyLoadout, installHeadOnly, isHeadMesh, OUTFIT_FILES, wearOutfits } from "./wardrobe";
 
 for (const row of LOOKS) useGLTF.preload(row.file);
 useGLTF.preload("/models/ual2.glb");
@@ -35,6 +35,17 @@ const EYE_CROUCH = 1.05;
 const SENS = 0.00205;
 const PITCH_LIM = Math.PI / 2 - 0.04;
 const PLAYER_R = 0.32;
+
+const _eyePos = new THREE.Vector3();
+const _adsPos = new THREE.Vector3();
+const _eyeQ = new THREE.Quaternion();
+const _adsQ = new THREE.Quaternion();
+const _sightO = new THREE.Vector3();
+const _sightB = new THREE.Vector3();
+const _sightU = new THREE.Vector3();
+const _sightRight = new THREE.Vector3();
+const _negBarrel = new THREE.Vector3();
+const _adsMat = new THREE.Matrix4();
 
 
 const CLIP = {
@@ -333,6 +344,7 @@ export function Player() {
     applyHeadOnly(baseMeshes.current);
     clothes.current = wearOutfits(body, female ? [femalePeasant.scene, femaleRanger.scene] : [malePeasant.scene, maleRanger.scene]);
     applyLoadout(clothes.current, gameState.loadout);
+    applyHairVisibility(baseMeshes.current, gameState.loadout.head === "ranger");
     controller.lower.play(CLIP.idle, 0);
     controller.upper.play(CLIP.idle, 0);
     controller.mixer.update(0);
@@ -766,6 +778,7 @@ export function Player() {
     body.rotation.y = bodyYaw;
     body.updateMatrixWorld(true);
     applyLoadout(clothes.current, gameState.loadout);
+    applyHairVisibility(baseMeshes.current, gameState.loadout.head === "ranger");
 
     const head = headBone.current;
     const neck = neckBone.current;
@@ -791,23 +804,47 @@ export function Player() {
         nextFov = 38;
       }
     } else if (fps) {
-      adsBlend.current = THREE.MathUtils.damp(adsBlend.current, aiming && !def.melee ? 1 : 0, 14, dt);
+      adsBlend.current = THREE.MathUtils.damp(adsBlend.current, aiming && !def.melee ? 1 : 0, 12, dt);
       const t = adsBlend.current;
       persp.rotation.order = "YXZ";
       persp.rotation.y = yaw.current;
-      persp.rotation.x = pitch.current + recoil.current;
+      persp.rotation.x = pitch.current + recoil.current * (1 - t * 0.4);
       persp.rotation.z = 0;
-
-      const lookDir = wish.current;
-      lookDir.set(0, 0, -1).applyEuler(persp.rotation);
+      _eyeQ.setFromEuler(persp.rotation);
 
       const down = Math.max(0, -pitch.current);
-      persp.position.set(pos.current.x, pos.current.y + eye.current + bobY, pos.current.z);
-      persp.position.addScaledVector(camFwd.current, 0.14 + down * 0.7 + t * 0.16);
-      persp.position.y -= t * 0.04;
-      nextFov = 75 - t * 30;
-      nextNear = 0.1;
-      lookTarget.current.copy(persp.position).addScaledVector(lookDir, 8);
+      _eyePos.set(pos.current.x, pos.current.y + eye.current + bobY * (1 - t), pos.current.z);
+      _eyePos.addScaledVector(camFwd.current, 0.14 + down * 0.7 * (1 - t));
+      persp.position.copy(_eyePos);
+      persp.quaternion.copy(_eyeQ);
+
+      if (t > 0.001 && weapons.current) {
+        body.updateMatrixWorld(true);
+        weapons.current.sight(_sightO, _sightB, _sightU);
+        // ADS camera on the gun: back along the barrel, then up onto the sights.
+        // Raise ADS_UP to sit higher, lower it to drop. ADS_BACK is distance behind the trigger.
+        const ADS_BACK = 0.09;
+        const ADS_UP = 0.08;
+        _adsPos.copy(_sightO).addScaledVector(_sightB, -ADS_BACK).addScaledVector(_sightU, ADS_UP);
+        _sightRight.crossVectors(_sightB, _sightU);
+        if (_sightRight.lengthSq() < 1e-5) {
+          _sightRight.set(1, 0, 0).applyQuaternion(_eyeQ);
+        } else {
+          _sightRight.normalize();
+        }
+        _sightU.crossVectors(_sightRight, _sightB).normalize();
+        _negBarrel.copy(_sightB).multiplyScalar(-1);
+        _adsMat.makeBasis(_sightRight, _sightU, _negBarrel);
+        _adsQ.setFromRotationMatrix(_adsMat);
+        persp.position.lerp(_adsPos, t);
+        persp.quaternion.slerp(_adsQ, t);
+      }
+
+      const lookDir = wish.current;
+      lookDir.set(0, 0, -1).applyQuaternion(persp.quaternion);
+      lookTarget.current.copy(persp.position).addScaledVector(lookDir, 12);
+      nextFov = 72 - t * 34;
+      nextNear = t > 0.35 ? 0.04 : 0.08;
     } else if (alignCam.current) {
       const hand = handBone.current;
       if (hand) {

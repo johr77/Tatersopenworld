@@ -113,6 +113,15 @@ test("a signal-killed command is never reported as success", async () => {
   );
 });
 
+test("on Windows, npm .cmd shims such as vite are spawnable", async (t) => {
+  if (process.platform !== "win32") {
+    t.skip("Windows-only: spawn of node_modules/.bin/*.cmd");
+    return;
+  }
+  const { stdout } = await execFileAsync(process.execPath, [WRAPPER, "vite", "--version"]);
+  assert.match(stdout, /\d+\.\d+/);
+});
+
 test("the CLI still runs when invoked through a symlinked path", async () => {
   // node realpaths import.meta.url but not process.argv[1], so a raw comparison
   // turns the wrapper into a no-op that exits 0 without starting anything.

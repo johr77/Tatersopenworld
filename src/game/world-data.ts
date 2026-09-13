@@ -64,15 +64,15 @@ function scatterPines(): TreePlace[] {
   const cz = 12;
   for (let i = 0; i < 12; i++) {
     const a = (i / 12) * Math.PI * 2;
-    add(cx + Math.sin(a) * 8, cz + Math.cos(a) * 8, 1.12);
+    add(cx + Math.sin(a) * 8, cz + Math.cos(a) * 8, 1.35);
   }
   for (let i = 0; i < 14; i++) {
     const a = (i / 14) * Math.PI * 2 + 0.2;
-    add(cx + Math.sin(a) * 16, cz + Math.cos(a) * 16, 1.05 + (i % 3) * 0.08);
+    add(cx + Math.sin(a) * 16, cz + Math.cos(a) * 16, 1.28 + (i % 3) * 0.1);
   }
   for (let i = 0; i < 10; i++) {
     const a = (i / 10) * Math.PI * 2 + 0.4;
-    add(cx + Math.sin(a) * 24, cz - 4 + Math.cos(a) * 20, 1.18);
+    add(cx + Math.sin(a) * 24, cz - 4 + Math.cos(a) * 20, 1.42);
   }
   return out;
 }
