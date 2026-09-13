@@ -21,16 +21,19 @@ export type WeaponDef = {
   hold: [number, number, number];
   /** Extra Euler XYZ on the hold (radians). Base is Rx(90) so barrel follows the fingers. */
   holdRot: [number, number, number];
+  /** First-person ADS: metres behind the trigger, and up toward the sights. */
+  adsBack: number;
+  adsUp: number;
   melee?: boolean;
   obj: string;
   mtl: string;
 };
 
 export const WEAPONS: WeaponDef[] = [
-  { id: "pistol", name: "Pistol", mag: 12, reserve: 36, fireCd: 0.15, reload: 1.35, recoil: 0.038, length: 0.26, gripBack: 0.055, drop: 0.012, hold: [-0.034, 0.100, 0.036], holdRot: [Math.PI / 2, -0.18, 0], obj: "/models/weapon/quaternius/Pistol_1.obj", mtl: "/models/weapon/quaternius/Pistol_1.mtl" },
-  { id: "ar", name: "Rifle", mag: 30, reserve: 90, fireCd: 0.1, reload: 2.05, recoil: 0.032, length: 0.78, gripBack: 0.30, drop: 0.02, hold: [-0.0, 0.32, 0.028], holdRot: [Math.PI / 2, -0.18, 0], obj: "/models/weapon/quaternius/AssaultRifle_1.obj", mtl: "/models/weapon/quaternius/AssaultRifle_1.mtl" },
-  { id: "shotgun", name: "Shotgun", mag: 6, reserve: 24, fireCd: 0.55, reload: 2.4, recoil: 0.07, length: 0.72, gripBack: 0.27, drop: 0.016, hold: [-0.035, 0.16, 0.055], holdRot: [Math.PI / 2, -0.18, 0], obj: "/models/weapon/quaternius/Shotgun_1.obj", mtl: "/models/weapon/quaternius/Shotgun_1.mtl" },
-  { id: "axe", name: "Axe", mag: 0, reserve: 0, fireCd: 0.95, reload: 0, recoil: 0.02, length: 0.7, gripBack: 0.2, drop: 0.02, hold: [-0.1, 0.24, 0.03], holdRot: [Math.PI / 2, 3.5, 0.15], melee: true, obj: "/models/tools/axe.glb", mtl: "" },
+  { id: "pistol", name: "Pistol", mag: 12, reserve: 36, fireCd: 0.15, reload: 1.35, recoil: 0.038, length: 0.26, gripBack: 0.055, drop: 0.012, hold: [-0.034, 0.100, 0.036], holdRot: [Math.PI / 2, -0.18, 0], adsBack: 0.09, adsUp: 0.08, obj: "/models/weapon/quaternius/Pistol_1.obj", mtl: "/models/weapon/quaternius/Pistol_1.mtl" },
+  { id: "ar", name: "Rifle", mag: 30, reserve: 90, fireCd: 0.1, reload: 2.05, recoil: 0.032, length: 0.78, gripBack: 0.30, drop: 0.02, hold: [-0.0, 0.32, 0.028], holdRot: [Math.PI / 2, -0.18, 0], adsBack: 0.28, adsUp: 0.012, obj: "/models/weapon/quaternius/AssaultRifle_1.obj", mtl: "/models/weapon/quaternius/AssaultRifle_1.mtl" },
+  { id: "shotgun", name: "Shotgun", mag: 6, reserve: 24, fireCd: 0.55, reload: 2.4, recoil: 0.07, length: 0.72, gripBack: 0.27, drop: 0.016, hold: [-0.035, 0.16, 0.055], holdRot: [Math.PI / 2, -0.18, 0], adsBack: 0.09, adsUp: 0.08, obj: "/models/weapon/quaternius/Shotgun_1.obj", mtl: "/models/weapon/quaternius/Shotgun_1.mtl" },
+  { id: "axe", name: "Axe", mag: 0, reserve: 0, fireCd: 0.95, reload: 0, recoil: 0.02, length: 0.7, gripBack: 0.2, drop: 0.02, hold: [-0.1, 0.24, 0.03], holdRot: [Math.PI / 2, 3.5, 0.15], adsBack: 0.12, adsUp: 0.02, melee: true, obj: "/models/tools/axe.glb", mtl: "" },
 ];
 
 function fallbackGun(length: number) {
@@ -191,7 +194,7 @@ export type WeaponHandle = {
   root: THREE.Group;
   setId: (id: WeaponId) => void;
   setLowered: (low: boolean) => void;
-  aimAt: (target: THREE.Vector3 | null) => void;
+  aimAt: (target: THREE.Vector3 | null, blend?: number) => void;
   /** Trigger origin, barrel (−Z), and gun-up. Returns camera distance behind the origin. */
   sight: (origin: THREE.Vector3, barrel: THREE.Vector3, up: THREE.Vector3) => number;
   children: () => number;
@@ -215,7 +218,12 @@ function fill(parent: THREE.Group) {
 const _dir = new THREE.Vector3();
 const _worldQ = new THREE.Quaternion();
 const _parentQ = new THREE.Quaternion();
-const _negZ = new THREE.Vector3(0, 0, -1);
+const _aimQ = new THREE.Quaternion();
+const _up = new THREE.Vector3(0, 1, 0);
+const _right = new THREE.Vector3();
+const _gunUp = new THREE.Vector3();
+const _gunZ = new THREE.Vector3();
+const _aimMat = new THREE.Matrix4();
 
 export function attachWeapons(hand: THREE.Object3D): WeaponHandle {
   const root = new THREE.Group();
@@ -245,9 +253,9 @@ export function attachWeapons(hand: THREE.Object3D): WeaponHandle {
     root,
     setId: show,
     setLowered: () => applyHold(),
-    aimAt: (target) => {
+    aimAt: (target, blend = 1) => {
       applyHold();
-      if (!target) return;
+      if (!target || blend <= 0) return;
       const parent = root.parent;
       if (!parent) return;
       parent.updateWorldMatrix(true, false);
@@ -255,9 +263,20 @@ export function attachWeapons(hand: THREE.Object3D): WeaponHandle {
       _dir.set(target.x - _dir.x, target.y - _dir.y, target.z - _dir.z);
       if (_dir.lengthSq() < 0.0001) return;
       _dir.normalize();
-      _worldQ.setFromUnitVectors(_negZ, _dir);
+      _right.crossVectors(_dir, _up);
+      if (_right.lengthSq() < 1e-6) {
+        _right.set(0, 0, 1).cross(_dir);
+        if (_right.lengthSq() < 1e-6) _right.set(1, 0, 0);
+      }
+      _right.normalize();
+      _gunUp.crossVectors(_right, _dir).normalize();
+      _gunZ.copy(_dir).multiplyScalar(-1);
+      _aimMat.makeBasis(_right, _gunUp, _gunZ);
+      _worldQ.setFromRotationMatrix(_aimMat);
       parent.getWorldQuaternion(_parentQ);
-      root.quaternion.copy(_parentQ.invert()).multiply(_worldQ);
+      _aimQ.copy(_parentQ).invert().multiply(_worldQ);
+      if (blend >= 1) root.quaternion.copy(_aimQ);
+      else root.quaternion.slerp(_aimQ, blend);
     },
     sight: (origin, barrel, up) => {
       // Wrap is identity; hold −Z is the barrel after Ry(90) on the OBJ.

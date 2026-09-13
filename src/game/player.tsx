@@ -39,13 +39,10 @@ const PLAYER_R = 0.32;
 const _eyePos = new THREE.Vector3();
 const _adsPos = new THREE.Vector3();
 const _eyeQ = new THREE.Quaternion();
-const _adsQ = new THREE.Quaternion();
 const _sightO = new THREE.Vector3();
 const _sightB = new THREE.Vector3();
 const _sightU = new THREE.Vector3();
-const _sightRight = new THREE.Vector3();
-const _negBarrel = new THREE.Vector3();
-const _adsMat = new THREE.Matrix4();
+const _chopFrom = new THREE.Vector3();
 
 
 const CLIP = {
@@ -643,14 +640,16 @@ export function Player() {
           ray.current.layers.enableAll();
           ray.current.setFromCamera(ndc.current, camera);
           const hits = ray.current.intersectObjects(scene.children, true);
+          const reachFrom = _chopFrom.set(pos.current.x, pos.current.y + 1.1, pos.current.z);
           const hit = hits.find((h) => {
-            if (h.distance > 2.8) return false;
+            const d = h.point.distanceTo(reachFrom);
+            if (d > 2.9 || d < 0.35) return false;
             let o: THREE.Object3D | null = h.object;
             while (o) {
-              if (o === body || o === viewmodel.current?.root) return false;
+              if (o === body || o === viewmodel.current?.root || o === weapons.current?.root) return false;
               o = o.parent;
             }
-            return h.distance > 0.2;
+            return true;
           });
           if (hit) {
             let o: THREE.Object3D | null = hit.object;
@@ -818,31 +817,17 @@ export function Player() {
       persp.position.copy(_eyePos);
       persp.quaternion.copy(_eyeQ);
 
-      if (t > 0.001 && weapons.current) {
-        body.updateMatrixWorld(true);
-        weapons.current.sight(_sightO, _sightB, _sightU);
-        // ADS camera on the gun: back along the barrel, then up onto the sights.
-        // Raise ADS_UP to sit higher, lower it to drop. ADS_BACK is distance behind the trigger.
-        const ADS_BACK = 0.09;
-        const ADS_UP = 0.08;
-        _adsPos.copy(_sightO).addScaledVector(_sightB, -ADS_BACK).addScaledVector(_sightU, ADS_UP);
-        _sightRight.crossVectors(_sightB, _sightU);
-        if (_sightRight.lengthSq() < 1e-5) {
-          _sightRight.set(1, 0, 0).applyQuaternion(_eyeQ);
-        } else {
-          _sightRight.normalize();
-        }
-        _sightU.crossVectors(_sightRight, _sightB).normalize();
-        _negBarrel.copy(_sightB).multiplyScalar(-1);
-        _adsMat.makeBasis(_sightRight, _sightU, _negBarrel);
-        _adsQ.setFromRotationMatrix(_adsMat);
-        persp.position.lerp(_adsPos, t);
-        persp.quaternion.slerp(_adsQ, t);
-      }
-
       const lookDir = wish.current;
-      lookDir.set(0, 0, -1).applyQuaternion(persp.quaternion);
-      lookTarget.current.copy(persp.position).addScaledVector(lookDir, 12);
+      lookDir.set(0, 0, -1).applyQuaternion(_eyeQ);
+      lookTarget.current.copy(_eyePos).addScaledVector(lookDir, 24);
+
+      if (t > 0.001 && weapons.current && !def.melee) {
+        body.updateMatrixWorld(true);
+        weapons.current.aimAt(lookTarget.current, t);
+        weapons.current.sight(_sightO, _sightB, _sightU);
+        _adsPos.copy(_sightO).addScaledVector(lookDir, -def.adsBack).addScaledVector(_sightU, def.adsUp);
+        persp.position.lerp(_adsPos, t);
+      }
       nextFov = 72 - t * 34;
       nextNear = t > 0.35 ? 0.04 : 0.08;
     } else if (alignCam.current) {
@@ -886,8 +871,9 @@ export function Player() {
       persp.lookAt(lookTarget.current);
       nextFov = 70;
     }
-    if (!alignCam.current && aiming && !fps && !def.melee) weapons.current?.aimAt(lookTarget.current);
-    else weapons.current?.aimAt(null);
+    const adsFps = fps && aiming && !def.melee && adsBlend.current > 0.001;
+    if (!alignCam.current && aiming && !def.melee && !adsFps) weapons.current?.aimAt(lookTarget.current);
+    else if (!adsFps) weapons.current?.aimAt(null);
     if (persp.fov !== nextFov || persp.near !== nextNear) {
       persp.fov = nextFov;
       persp.near = nextNear;
