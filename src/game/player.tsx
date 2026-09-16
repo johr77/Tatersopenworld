@@ -8,11 +8,11 @@ import { clone as cloneSkinned } from "three/addons/utils/SkeletonUtils.js";
 import { consumeLook, edges, initInput, mouse, sampleActions, setForcedKeys, settings } from "./input";
 import { gameState } from "./state";
 import { playChop, playEmpty, playGunshot, playImpact, playSwoosh, playTreeFall } from "./audio";
-import { collectStrand, collectWood } from "./inventory";
+import { collectStone, collectStrand, collectWood } from "./inventory";
 import { saveCurrentInventory } from "./profiles";
 import { resolveCircle } from "./world-data";
-import { nearestToolTarget, nearestUseTarget, TOOL_SNAP_RANGE } from "./tools";
-import { attachWeapons, WEAPONS, type WeaponHandle } from "./weapon";
+import { nearestStash, nearestToolTarget, nearestUseTarget, TREE_CHOP_RANGE, WEED_PICK_RANGE } from "./tools";
+import { attachWeapons, WEAPONS, type WeaponHandle, type WeaponId } from "./weapon";
 import { isFemaleLook, lookDef, LOOKS, type LookId } from "./profiles";
 import { applyHairVisibility, applyHeadOnly, applyLoadout, installHeadOnly, isHairMesh, isHeadMesh, OUTFIT_FILES, wearOutfits } from "./wardrobe";
 
@@ -45,6 +45,18 @@ const _sightB = new THREE.Vector3();
 const _sightU = new THREE.Vector3();
 const _chopFrom = new THREE.Vector3();
 
+
+function heldWeaponId(): WeaponId | null {
+  const eq = gameState.equipment;
+  if (gameState.hands === "weapon" && eq.weapon?.id === "pistol") return "pistol";
+  if (gameState.hands === "weapon2" && eq.weapon2?.id === "shotgun") return "shotgun";
+  return null;
+}
+
+function heldDef() {
+  const id = heldWeaponId();
+  return id ? WEAPONS.find((w) => w.id === id) ?? null : null;
+}
 
 const CLIP = {
   idle: "Idle_Loop",
@@ -188,6 +200,21 @@ function resetBind(root: THREE.Object3D) {
   });
 }
 
+function poseIdle(controller: ReturnType<typeof makeController>, root: THREE.Object3D) {
+  controller.lower.play(CLIP.idle, 0, true);
+  controller.upper.play(CLIP.idle, 0, true);
+  const jump = (layer: { get: (n: string) => MixerAction | undefined }) => {
+    const a = layer.get(CLIP.idle);
+    if (!a) return;
+    const dur = a.getClip().duration || 1;
+    a.time = Math.min(0.28, dur * 0.2);
+  };
+  jump(controller.lower);
+  jump(controller.upper);
+  controller.mixer.update(1 / 30);
+  root.updateMatrixWorld(true);
+}
+
 function cloneMats(mesh: THREE.Mesh) {
   if (Array.isArray(mesh.material)) mesh.material = mesh.material.map((m) => m.clone());
   else mesh.material = mesh.material.clone();
@@ -279,10 +306,11 @@ export function Player() {
     applyHeadOnly(meshes);
     return b;
   }, [gltf.scene, look]);
-  const controller = useMemo(
-    () => makeController(body, [...maleGltf.animations, ...ual2.animations]),
-    [body, maleGltf.animations, ual2.animations],
-  );
+  const controller = useMemo(() => {
+    const c = makeController(body, [...maleGltf.animations, ...ual2.animations]);
+    poseIdle(c, body);
+    return c;
+  }, [body, maleGltf.animations, ual2.animations]);
   const clothes = useRef<THREE.SkinnedMesh[]>([]);
   const baseMeshes = useRef<THREE.Mesh[]>([]);
   const plantBox = useRef(new THREE.Box3());
@@ -324,9 +352,10 @@ export function Player() {
   const reloadT = useRef(0);
   const ammo = useRef(WEAPONS[1].mag);
   const reserve = useRef(WEAPONS[1].reserve);
-  const weaponI = useRef(1);
+  const lastHeld = useRef<WeaponId | null>(null);
   const shootHold = useRef(0);
   const pickHold = useRef(0);
+  const chopHold = useRef(0);
   const flash = useRef(0);
   const camPos = useRef(new THREE.Vector3(0, 1.6, 14));
   const fwd = useRef(new THREE.Vector3());
@@ -354,10 +383,7 @@ export function Player() {
     clothes.current = wearOutfits(body, female ? [femalePeasant.scene, femaleRanger.scene] : [malePeasant.scene, maleRanger.scene]);
     applyLoadout(clothes.current, gameState.loadout);
     applyHairVisibility(baseMeshes.current, gameState.loadout.head === "ranger");
-    controller.lower.play(CLIP.idle, 0);
-    controller.upper.play(CLIP.idle, 0);
-    controller.mixer.update(0);
-    body.updateMatrixWorld(true);
+    poseIdle(controller, body);
     plantBox.current.setFromObject(body);
     footLift.current = Number.isFinite(plantBox.current.min.y) ? -plantBox.current.min.y : 0;
     headBone.current = body.getObjectByName("Head") ?? null;
@@ -375,7 +401,8 @@ export function Player() {
         o.renderOrder = 5;
       });
     }
-    weapons.current?.setId(WEAPONS[weaponI.current].id);
+    weapons.current?.setId(heldWeaponId());
+    lastHeld.current = heldWeaponId();
 
     window.__controlsTest = {
       getYaw: () => yaw.current,
@@ -414,13 +441,7 @@ export function Player() {
       },
       getWeapon: () => gameState.weapon,
       setSlot: (i: number) => {
-        weaponI.current = i;
-        const def = WEAPONS[i];
-        weapons.current?.setId(def.id);
-        viewmodel.current?.setId(def.id);
-        ammo.current = def.mag;
-        reserve.current = def.reserve;
-        gameState.weapon = def.name;
+        gameState.hands = i === 1 ? "weapon2" : "weapon";
       },
       getLook: () => gameState.look,
       getDebug: () => ({
@@ -433,7 +454,7 @@ export function Player() {
     };
 
     gameState.ready = true;
-    gameState.weapon = WEAPONS[weaponI.current].name;
+    gameState.weapon = heldDef()?.name ?? "—";
     return () => {
       weapons.current?.dispose();
       weapons.current = null;
@@ -479,19 +500,30 @@ export function Player() {
     }
     if (view.current === "fps") alignCam.current = false;
     else adsBlend.current = 0;
-    let nextSlot = weaponI.current;
-    if (actions.weaponSlot !== null) nextSlot = actions.weaponSlot;
-    else if (edges.nextWeapon) nextSlot = (weaponI.current + 1) % WEAPONS.length;
-    else if (edges.prevWeapon) nextSlot = (weaponI.current + WEAPONS.length - 1) % WEAPONS.length;
-    if (nextSlot !== weaponI.current) {
-      weaponI.current = nextSlot;
-      const def = WEAPONS[weaponI.current];
-      weapons.current?.setId(def.id);
-      viewmodel.current?.setId(def.id);
-      ammo.current = def.mag;
-      reserve.current = def.reserve;
-      reloadT.current = 0;
-      gameState.weapon = def.name;
+    if (actions.weaponSlot === 0 && gameState.equipment.weapon) gameState.hands = "weapon";
+    if (actions.weaponSlot === 1 && gameState.equipment.weapon2) gameState.hands = "weapon2";
+    if (edges.nextWeapon || edges.prevWeapon) {
+      const guns: Array<"weapon" | "weapon2"> = [];
+      if (gameState.equipment.weapon) guns.push("weapon");
+      if (gameState.equipment.weapon2) guns.push("weapon2");
+      if (guns.length) {
+        const i = Math.max(0, guns.indexOf(gameState.hands as "weapon" | "weapon2"));
+        const n = edges.nextWeapon ? 1 : guns.length - 1;
+        gameState.hands = guns[(i + n) % guns.length]!;
+      }
+    }
+    const held = heldWeaponId();
+    if (held !== lastHeld.current) {
+      lastHeld.current = held;
+      if (chopHold.current <= 0) weapons.current?.setId(held);
+      viewmodel.current?.setId(held);
+      const def = heldDef();
+      if (def && !def.melee) {
+        ammo.current = def.mag;
+        reserve.current = def.reserve;
+        reloadT.current = 0;
+      }
+      gameState.weapon = def?.name ?? "—";
     }
 
     const lookDelta = consumeLook();
@@ -566,10 +598,10 @@ export function Player() {
         : WALK_SPEED;
 
     wish.current.copy(fwd.current).multiplyScalar(actions.moveY).addScaledVector(right.current, actions.moveX);
-    if (inspecting) wish.current.set(0, 0, 0);
+    if (inspecting || pickHold.current > 0 || chopHold.current > 0) wish.current.set(0, 0, 0);
     if (wish.current.lengthSq() > 1) wish.current.normalize();
 
-    if (inspecting) {
+    if (inspecting || pickHold.current > 0 || chopHold.current > 0) {
       vel.current.x = 0;
       vel.current.z = 0;
     }
@@ -588,7 +620,7 @@ export function Player() {
       vel.current.z *= maxSpeed / sp;
     }
 
-    if (edges.jump && !inspecting) jumpBuf.current = 0.12;
+    if (edges.jump && !inspecting && pickHold.current <= 0 && chopHold.current <= 0) jumpBuf.current = 0.12;
     else jumpBuf.current = Math.max(0, jumpBuf.current - dt);
     if (grounded.current) coyote.current = 0.12;
     else coyote.current = Math.max(0, coyote.current - dt);
@@ -625,100 +657,24 @@ export function Player() {
     pos.current.z = resolved.z;
 
     const xz = Math.hypot(vel.current.x, vel.current.z);
-    const def = WEAPONS[weaponI.current];
+    const def = heldDef();
     fireCd.current = Math.max(0, fireCd.current - dt);
     if (reloadT.current > 0) {
       reloadT.current -= dt;
-      if (reloadT.current <= 0) {
+      if (reloadT.current <= 0 && def) {
         const need = def.mag - ammo.current;
         const take = Math.min(need, reserve.current);
         ammo.current += take;
         reserve.current -= take;
       }
     }
-    if (edges.reload && reloadT.current <= 0 && !def.melee && ammo.current < def.mag && reserve.current > 0) {
+    if (edges.reload && def && !def.melee && reloadT.current <= 0 && ammo.current < def.mag && reserve.current > 0) {
       reloadT.current = def.reload;
       controller.upper.play(CLIP.reload, 0.08);
     }
     if (edges.fire && reloadT.current <= 0) {
-      if (def.melee) {
-        if (fireCd.current <= 0) {
-          fireCd.current = def.fireCd;
-          recoil.current += def.recoil;
-          shootHold.current = 0.95;
-          controller.lower.play(CLIP.chop, 0.05, true);
-          controller.upper.play(CLIP.chop, 0.05, true);
-          ray.current.layers.enableAll();
-          ray.current.setFromCamera(ndc.current, camera);
-          const hits = ray.current.intersectObjects(scene.children, true);
-          let hitTree: THREE.Object3D | null = null;
-          for (const h of hits) {
-            let kind: "skip" | "tree" | "solid" = "solid";
-            let treeObj: THREE.Object3D | null = null;
-            for (let o: THREE.Object3D | null = h.object; o; o = o.parent) {
-              if (!o.visible) {
-                kind = "skip";
-                break;
-              }
-              if (o === body || o === viewmodel.current?.root || o === weapons.current?.root) {
-                kind = "skip";
-                break;
-              }
-              if (o.name === "Ground" || o.userData?.ground) {
-                kind = "skip";
-                break;
-              }
-              if (o.userData?.tree && typeof o.userData.chop === "function") {
-                treeObj = o;
-                kind = "tree";
-                break;
-              }
-            }
-            if (kind === "skip") continue;
-            if (kind !== "tree" || !treeObj) break;
-            treeObj.getWorldPosition(_chopFrom);
-            const dx = pos.current.x - _chopFrom.x;
-            const dz = pos.current.z - _chopFrom.z;
-            if (dx * dx + dz * dz > 3.2 * 3.2) break;
-            hitTree = treeObj;
-            break;
-          }
-          let applied = false;
-          if (hitTree) {
-            const r = hitTree.userData.chop() as "hit" | "fell" | "gone";
-            if (r === "gone") hitTree = null;
-            else applied = true;
-            if (r === "fell") {
-              playTreeFall();
-              if (collectWood(gameState.inventory)) saveCurrentInventory();
-            }
-          }
-          if (!hitTree && def.tool) {
-            hitTree = nearestToolTarget(scene, pos.current, fwd.current, def.id, TOOL_SNAP_RANGE);
-          }
-          if (hitTree) {
-            hitTree.getWorldPosition(_chopFrom);
-            const dx = _chopFrom.x - pos.current.x;
-            const dz = _chopFrom.z - pos.current.z;
-            yaw.current = Math.atan2(-dx, -dz);
-            const horiz = Math.hypot(dx, dz) || 1;
-            pitch.current = THREE.MathUtils.clamp(
-              Math.atan2(1.15 - eye.current, horiz),
-              -PITCH_LIM,
-              PITCH_LIM,
-            );
-            if (!applied) {
-              const r = hitTree.userData.chop() as "hit" | "fell" | "gone";
-              if (r === "fell") {
-                playTreeFall();
-                if (collectWood(gameState.inventory)) saveCurrentInventory();
-              }
-            }
-            playChop();
-          } else {
-            playSwoosh();
-          }
-        }
+      if (!def || def.melee) {
+        playEmpty();
       } else if (ammo.current <= 0) playEmpty();
       else if (fireCd.current <= 0) {
         ammo.current -= 1;
@@ -763,9 +719,13 @@ export function Player() {
     const fps = view.current === "fps";
     weapons.current?.setLowered(!aiming && shootHold.current <= 0);
 
-    const chopping = Boolean(def.melee && shootHold.current > 0);
+    const chopping = chopHold.current > 0;
     const picking = pickHold.current > 0;
     if (picking) pickHold.current = Math.max(0, pickHold.current - dt);
+    if (chopping) {
+      chopHold.current = Math.max(0, chopHold.current - dt);
+      if (chopHold.current <= 0) weapons.current?.setId(heldWeaponId());
+    }
     let loco = CLIP.idle;
     if (!grounded.current) {
       controller.lower.setBackpedal(false);
@@ -844,7 +804,7 @@ export function Player() {
     if (head) head.scale.setScalar(hideSkull ? 0.01 : 1);
     if (neck) neck.scale.setScalar(hideSkull ? 0.01 : 1);
     body.visible = true;
-    if (weapons.current) weapons.current.root.visible = !inMenu;
+    if (weapons.current) weapons.current.root.visible = !inMenu && (Boolean(heldWeaponId()) || chopHold.current > 0);
     if (viewmodel.current) viewmodel.current.root.visible = false;
     if (muzzle.current) muzzle.current.intensity = flash.current > 0 ? 18 : 0;
 
@@ -862,7 +822,7 @@ export function Player() {
         nextFov = 38;
       }
     } else if (fps) {
-      adsBlend.current = THREE.MathUtils.damp(adsBlend.current, aiming && !def.melee ? 1 : 0, 12, dt);
+      adsBlend.current = THREE.MathUtils.damp(adsBlend.current, aiming && def && !def.melee ? 1 : 0, 12, dt);
       const t = adsBlend.current;
       persp.rotation.order = "YXZ";
       persp.rotation.y = yaw.current;
@@ -880,7 +840,7 @@ export function Player() {
       lookDir.set(0, 0, -1).applyQuaternion(_eyeQ);
       lookTarget.current.copy(_eyePos).addScaledVector(lookDir, 24);
 
-      if (t > 0.001 && weapons.current && !def.melee) {
+      if (t > 0.001 && weapons.current && def && !def.melee) {
         body.updateMatrixWorld(true);
         weapons.current.aimAt(lookTarget.current, t);
         weapons.current.sight(_sightO, _sightB, _sightU);
@@ -930,8 +890,8 @@ export function Player() {
       persp.lookAt(lookTarget.current);
       nextFov = 70;
     }
-    const adsFps = fps && aiming && !def.melee && adsBlend.current > 0.001;
-    if (!alignCam.current && aiming && !def.melee && !adsFps) weapons.current?.aimAt(lookTarget.current);
+    const adsFps = Boolean(fps && aiming && def && !def.melee && adsBlend.current > 0.001);
+    if (!alignCam.current && aiming && def && !def.melee && !adsFps) weapons.current?.aimAt(lookTarget.current);
     else if (!adsFps) weapons.current?.aimAt(null);
     if (persp.fov !== nextFov || persp.near !== nextNear) {
       persp.fov = nextFov;
@@ -955,25 +915,62 @@ export function Player() {
     gameState.ammo = ammo.current;
     gameState.reserve = reserve.current;
     gameState.reloading = reloadT.current > 0;
-    gameState.magSize = def.mag;
+    gameState.magSize = def?.mag ?? 0;
     gameState.pad = actions.padActive;
-    const useT = nearestUseTarget(scene, pos.current, fwd.current, TOOL_SNAP_RANGE);
-    gameState.prompt = useT ? "Pick weed" : "";
-    if (edges.use && useT) {
-      const ok = useT.userData.use() as boolean;
-      if (ok) {
-        collectStrand(gameState.inventory);
-        saveCurrentInventory();
-        controller.lower.play(CLIP.pick, 0.06, true);
-        controller.upper.play(CLIP.pick, 0.06, true);
-        const clip = controller.upper.get(CLIP.pick)?.getClip() ?? controller.lower.get(CLIP.pick)?.getClip();
-        const dur = clip?.duration || 1.1;
-        pickHold.current = dur;
-        useT.userData.pull?.(dur * 0.48);
-        useT.getWorldPosition(_chopFrom);
+    const stash = nearestStash(scene, pos.current, fwd.current);
+    const pickable = nearestUseTarget(scene, pos.current, fwd.current, WEED_PICK_RANGE);
+    const axeReady = gameState.equipment.tool?.id === "axe";
+    const tree = axeReady ? nearestToolTarget(scene, pos.current, fwd.current, "axe", TREE_CHOP_RANGE) : null;
+    gameState.prompt = stash
+      ? "Open crate"
+      : pickable?.userData.kind === "stone"
+        ? "Pick stone"
+        : pickable
+          ? "Pick weed"
+          : tree
+            ? "Chop"
+            : "";
+    const busy = pickHold.current > 0 || chopHold.current > 0;
+    if (edges.use && !busy) {
+      if (stash) {
+        stash.userData.use();
+      } else if (pickable) {
+        const ok = pickable.userData.use() as boolean;
+        if (ok) {
+          if (pickable.userData.kind === "stone") collectStone(gameState.inventory);
+          else collectStrand(gameState.inventory);
+          saveCurrentInventory();
+          controller.lower.play(CLIP.pick, 0.06, true);
+          controller.upper.play(CLIP.pick, 0.06, true);
+          const clip = controller.upper.get(CLIP.pick)?.getClip() ?? controller.lower.get(CLIP.pick)?.getClip();
+          const dur = clip?.duration || 1.1;
+          pickHold.current = dur;
+          pickable.userData.pull?.(dur * 0.48);
+          pickable.getWorldPosition(_chopFrom);
+          const dx = _chopFrom.x - pos.current.x;
+          const dz = _chopFrom.z - pos.current.z;
+          if (dx * dx + dz * dz > 0.25) yaw.current = Math.atan2(-dx, -dz);
+        }
+      } else if (tree) {
+        tree.getWorldPosition(_chopFrom);
         const dx = _chopFrom.x - pos.current.x;
         const dz = _chopFrom.z - pos.current.z;
-        if (dx * dx + dz * dz > 0.25) yaw.current = Math.atan2(-dx, -dz);
+        yaw.current = Math.atan2(-dx, -dz);
+        const horiz = Math.hypot(dx, dz) || 1;
+        pitch.current = THREE.MathUtils.clamp(Math.atan2(1.15 - eye.current, horiz), -PITCH_LIM, PITCH_LIM);
+        const r = tree.userData.chop() as "hit" | "fell" | "gone";
+        if (r !== "gone") {
+          weapons.current?.setId("axe");
+          controller.lower.play(CLIP.chop, 0.05, true);
+          controller.upper.play(CLIP.chop, 0.05, true);
+          const clip = controller.upper.get(CLIP.chop)?.getClip() ?? controller.lower.get(CLIP.chop)?.getClip();
+          chopHold.current = Math.min(1.05, clip?.duration || 0.95);
+          playChop();
+          if (r === "fell") {
+            playTreeFall();
+            if (collectWood(gameState.inventory)) saveCurrentInventory();
+          }
+        }
       }
     }
   });

@@ -29,18 +29,32 @@ import {
   loadPlayers,
   savePlayers,
   makeId,
+  saveCurrentInventory,
   type LookId,
   type PlayerProfile,
 } from "./profiles";
-import { INV_SIZE, ITEM_LABEL, emptyInventory, migrateInventory, type InvSlot } from "./inventory";
 import {
-  CLOTH_SLOTS,
-  STYLE_LABEL,
-  cycleStyle,
-  emptyLoadout,
-  type ClothSlot,
-  type Loadout,
-} from "./wardrobe";
+  EQUIP_SLOTS,
+  INV_SIZE,
+  ITEM_LABEL,
+  canFit,
+  emptyCrate,
+  emptyEquipment,
+  ensureStarterGear,
+  migrateCrate,
+  migrateEquipment,
+  migrateInventory,
+  moveEquipToInv,
+  moveInvToEquip,
+  moveBetween,
+  moveInvToInv,
+  starterInventory,
+  syncHands,
+  CRATE_SIZE,
+  type EquipSlotId,
+  type InvSlot,
+} from "./inventory";
+import { emptyLoadout } from "./wardrobe";
 
 function takeNav(nav: MenuNav | null, seen: { current: number }): MenuNav | null {
   if (!nav || nav.seq === 0 || nav.seq === seen.current) return null;
@@ -157,6 +171,44 @@ function StrandIcon() {
   );
 }
 
+function PistolIcon() {
+  return (
+    <svg className="inv-log" viewBox="0 0 64 40" aria-hidden="true">
+      <rect x="8" y="16" width="38" height="8" rx="2" fill="#4a4e52" />
+      <rect x="40" y="14" width="16" height="6" rx="1" fill="#6a6e72" />
+      <path d="M14 24 L12 36 L22 36 L24 24" fill="#3a2a22" />
+    </svg>
+  );
+}
+
+function ShotgunIcon() {
+  return (
+    <svg className="inv-log" viewBox="0 0 64 40" aria-hidden="true">
+      <rect x="4" y="18" width="50" height="6" rx="2" fill="#4a4e52" />
+      <rect x="40" y="16" width="18" height="10" rx="2" fill="#5c4030" />
+      <rect x="8" y="14" width="10" height="4" fill="#6a6e72" />
+    </svg>
+  );
+}
+
+function StoneIcon() {
+  return (
+    <svg className="inv-log" viewBox="0 0 64 40" aria-hidden="true">
+      <ellipse cx="32" cy="22" rx="16" ry="11" fill="#8b8680" />
+      <ellipse cx="28" cy="19" rx="6" ry="4" fill="#a8a29c" opacity="0.7" />
+    </svg>
+  );
+}
+
+function AxeIcon() {
+  return (
+    <svg className="inv-log" viewBox="0 0 64 40" aria-hidden="true">
+      <rect x="28" y="6" width="5" height="30" rx="1" fill="#6b4223" />
+      <path d="M18 8 L46 8 L42 20 L22 20 Z" fill="#8a9096" />
+    </svg>
+  );
+}
+
 function LogIcon() {
   return (
     <svg className="inv-log" viewBox="0 0 64 40" aria-hidden="true">
@@ -169,43 +221,360 @@ function LogIcon() {
   );
 }
 
-function InventoryPanel({ onBack, nav }: { onBack: () => void; nav: MenuNav | null }) {
-  const slots: InvSlot[] = gameState.inventory;
-  const [focus, setFocus] = useState(0);
+function ItemGlyph({ id }: { id: NonNullable<InvSlot>["id"] }) {
+  if (id === "strand") return <StrandIcon />;
+  if (id === "pistol") return <PistolIcon />;
+  if (id === "shotgun") return <ShotgunIcon />;
+  if (id === "axe") return <AxeIcon />;
+  if (id === "stone") return <StoneIcon />;
+  return <LogIcon />;
+}
+
+function SlotFace({ slot }: { slot: InvSlot }) {
+  if (!slot) return <span className="inv-empty">Empty</span>;
+  return (
+    <>
+      {slot.count > 1 ? <span className="inv-count tabular">{slot.count}</span> : null}
+      <ItemGlyph id={slot.id} />
+      <span className="inv-name">{ITEM_LABEL[slot.id]}</span>
+    </>
+  );
+}
+
+const KIT_COUNT = EQUIP_SLOTS.length;
+const INV_COLS = 3;
+const INV_BACK = KIT_COUNT + INV_SIZE;
+
+type Held =
+  | { kind: "inv"; i: number }
+  | { kind: "eq"; id: EquipSlotId }
+  | { kind: "crate"; i: number }
+  | null;
+
+function persistGear() {
+  saveCurrentInventory();
+  gameState.hands = syncHands(gameState.equipment, gameState.hands);
+}
+
+function matchingKit(item: InvSlot): EquipSlotId | null {
+  if (!item) return null;
+  const row = EQUIP_SLOTS.find((s) => canFit(s.id, item));
+  return row?.id ?? null;
+}
+
+function firstEmptyPocket() {
+  return gameState.inventory.findIndex((s) => !s);
+}
+
+function InventoryPanel({
+  onBack,
+  nav,
+  mode = "kit",
+}: {
+  onBack: () => void;
+  nav: MenuNav | null;
+  mode?: "kit" | "crate";
+}) {
+  const [, bump] = useState(0);
+  const refresh = () => bump((n) => n + 1);
+  const crateMode = mode === "crate";
+  const [focus, setFocus] = useState(crateMode ? CRATE_SIZE : KIT_COUNT);
+  const [held, setHeld] = useState<Held>(null);
   const seen = useRef(nav?.seq ?? 0);
   const focusRef = useRef(0);
+  const heldRef = useRef<Held>(null);
   focusRef.current = focus;
+  heldRef.current = held;
+  const cardRef = useRef<HTMLDivElement>(null);
+
+  const dropOnEq = (slot: EquipSlotId, from: Held) => {
+    if (!from) return;
+    if (from.kind === "inv") {
+      if (moveInvToEquip(gameState.inventory, gameState.equipment, from.i, slot)) {
+        if (slot === "weapon" || slot === "weapon2") gameState.hands = slot;
+        persistGear();
+        setHeld(null);
+        refresh();
+      }
+      return;
+    }
+    if (from.id === slot) {
+      setHeld(null);
+      return;
+    }
+    const a = gameState.equipment[from.id];
+    const b = gameState.equipment[slot];
+    if (a && canFit(slot, a) && (!b || canFit(from.id, b))) {
+      gameState.equipment[slot] = a;
+      gameState.equipment[from.id] = b;
+      persistGear();
+      setHeld(null);
+      refresh();
+    }
+  };
+
+  const dropOnInv = (i: number, from: Held) => {
+    if (!from) return;
+    if (from.kind === "inv") {
+      moveInvToInv(gameState.inventory, from.i, i);
+      persistGear();
+      setHeld(null);
+      refresh();
+      return;
+    }
+    if (from.kind === "crate") {
+      moveBetween(gameState.crate, from.i, gameState.inventory, i);
+      persistGear();
+      setHeld(null);
+      refresh();
+      return;
+    }
+    if (from.kind === "eq" && moveEquipToInv(gameState.inventory, gameState.equipment, from.id, i)) {
+      persistGear();
+      setHeld(null);
+      refresh();
+    }
+  };
+
+  const dropOnCrate = (i: number, from: Held) => {
+    if (!from) return;
+    if (from.kind === "crate") {
+      moveInvToInv(gameState.crate, from.i, i);
+      persistGear();
+      setHeld(null);
+      refresh();
+      return;
+    }
+    if (from.kind === "inv") {
+      moveBetween(gameState.inventory, from.i, gameState.crate, i);
+      persistGear();
+      setHeld(null);
+      refresh();
+    }
+  };
+
   useEffect(() => {
     const n = takeNav(nav, seen);
     if (!n) return;
-    if (n.down) setFocus((i) => (i + 1) % (INV_SIZE + 1));
-    if (n.up) setFocus((i) => (i - 1 + INV_SIZE + 1) % (INV_SIZE + 1));
-    if (n.back || n.menu) onBack();
-    else if (n.ok && focusRef.current === INV_SIZE) onBack();
+    const at = focusRef.current;
+    const carry = heldRef.current;
+    if (n.left || n.right || n.up || n.down) {
+      if (crateMode) {
+        const back = CRATE_SIZE + INV_SIZE;
+        if (at < CRATE_SIZE) {
+          const r = Math.floor(at / INV_COLS);
+          const c = at % INV_COLS;
+          if (n.left && c > 0) setFocus(at - 1);
+          else if (n.right) {
+            if (c < INV_COLS - 1 && at + 1 < CRATE_SIZE) setFocus(at + 1);
+            else setFocus(CRATE_SIZE + r * INV_COLS);
+          } else if (n.up) setFocus(r > 0 ? at - INV_COLS : back);
+          else if (n.down) setFocus(at + INV_COLS < CRATE_SIZE ? at + INV_COLS : back);
+          return;
+        }
+        if (at < back) {
+          const i = at - CRATE_SIZE;
+          const r = Math.floor(i / INV_COLS);
+          const c = i % INV_COLS;
+          if (n.left) {
+            if (c > 0) setFocus(at - 1);
+            else setFocus(Math.min(CRATE_SIZE - 1, r * INV_COLS + 2));
+          } else if (n.right) {
+            if (c < INV_COLS - 1 && i + 1 < INV_SIZE) setFocus(at + 1);
+          } else if (n.up) setFocus(r > 0 ? at - INV_COLS : 0);
+          else if (n.down) setFocus(i + INV_COLS < INV_SIZE ? at + INV_COLS : back);
+          return;
+        }
+        if (n.up) setFocus(CRATE_SIZE + INV_COLS);
+        else if (n.down) setFocus(0);
+        return;
+      }
+      if (at < KIT_COUNT) {
+        if (n.up) setFocus(at === 0 ? INV_BACK : at - 1);
+        else if (n.down) setFocus(at === KIT_COUNT - 1 ? INV_BACK : at + 1);
+        else if (n.right) {
+          const row = at <= 1 ? 0 : 1;
+          setFocus(KIT_COUNT + Math.min(INV_SIZE - 1, row * INV_COLS));
+        }
+        return;
+      }
+      if (at < INV_BACK) {
+        const i = at - KIT_COUNT;
+        const r = Math.floor(i / INV_COLS);
+        const c = i % INV_COLS;
+        if (n.left) {
+          if (c > 0) setFocus(at - 1);
+          else setFocus(Math.min(KIT_COUNT - 1, r === 0 ? 0 : 2));
+        } else if (n.right) {
+          if (c < INV_COLS - 1 && i + 1 < INV_SIZE) setFocus(at + 1);
+        } else if (n.up) {
+          if (r > 0) setFocus(KIT_COUNT + (r - 1) * INV_COLS + c);
+          else setFocus(0);
+        } else if (n.down) {
+          const ni = (r + 1) * INV_COLS + c;
+          if (ni < INV_SIZE) setFocus(KIT_COUNT + ni);
+          else setFocus(INV_BACK);
+        }
+        return;
+      }
+      if (n.up) setFocus(KIT_COUNT + INV_COLS);
+      else if (n.down) setFocus(0);
+      else if (n.left) setFocus(KIT_COUNT - 1);
+      else if (n.right) setFocus(INV_BACK - 1);
+      return;
+    }
+    if (n.back || n.menu) {
+      if (carry) setHeld(null);
+      else onBack();
+      return;
+    }
+    if (!n.ok) return;
+    if (crateMode) {
+      const back = CRATE_SIZE + INV_SIZE;
+      if (at === back) {
+        onBack();
+        return;
+      }
+      if (at < CRATE_SIZE) {
+        if (carry) dropOnCrate(at, carry);
+        else if (gameState.crate[at]) setHeld({ kind: "crate", i: at });
+        return;
+      }
+      const i = at - CRATE_SIZE;
+      if (carry) dropOnInv(i, carry);
+      else if (gameState.inventory[i]) setHeld({ kind: "inv", i });
+      return;
+    }
+    if (at === INV_BACK) {
+      onBack();
+      return;
+    }
+    if (at < KIT_COUNT) {
+      const id = EQUIP_SLOTS[at]!.id;
+      if (carry) dropOnEq(id, carry);
+      else if (gameState.equipment[id]) {
+        const empty = firstEmptyPocket();
+        if (empty >= 0) dropOnInv(empty, { kind: "eq", id });
+      }
+      return;
+    }
+    const i = at - KIT_COUNT;
+    const item = gameState.inventory[i];
+    const kit = matchingKit(item);
+    if (!carry && kit) {
+      dropOnEq(kit, { kind: "inv", i });
+      return;
+    }
+    if (carry) dropOnInv(i, carry);
+    else if (item) setHeld({ kind: "inv", i });
   }, [nav]);
+  useEffect(() => {
+    const el = cardRef.current?.querySelector("[data-focus='1']");
+    el?.scrollIntoView({ block: "nearest" });
+  }, [focus]);
+
   return (
     <div className="start-overlay options-overlay" onClick={(e) => { if (e.target === e.currentTarget) onBack(); }}>
-      <div className="start-card options-card">
+      <div className="start-card options-card inv-card" ref={cardRef}>
         <p className="start-kicker">{gameState.playerName || "Player"}</p>
-        <h2 className="options-title">Inventory</h2>
-        <p className="start-copy">Six pockets. Chop pines for wood. Pick wispy weeds (E / X) for strand.</p>
-        <div className="inv-grid">
-          {slots.map((slot, i) => (
-            <div key={i} className="inv-slot" data-focus={focus === i ? "1" : "0"} data-filled={slot ? "1" : "0"}>
-              {slot ? (
-                <>
-                  <span className="inv-count tabular">{slot.count}</span>
-                  {slot.id === "strand" ? <StrandIcon /> : <LogIcon />}
-                  <span className="inv-name">{ITEM_LABEL[slot.id]}</span>
-                </>
-              ) : (
-                <span className="inv-empty">Empty</span>
-              )}
+        <h2 className="options-title">{crateMode ? "Crate" : "Inventory"}</h2>
+        <p className="start-copy">
+          {crateMode
+            ? "Move items between the crate and your pockets. A pick up / place · drag works too."
+            : "A equips pistol, shotgun, or axe into the matching kit slot. Mouse can still drag."}
+        </p>
+        <div className={`inv-layout${crateMode ? " crate-layout" : ""}`}>
+          {crateMode ? (
+            <div className="inv-grid crate-grid">
+              {gameState.crate.map((slot, i) => (
+                <div
+                  key={`c-${i}`}
+                  className="inv-slot"
+                  data-focus={focus === i ? "1" : "0"}
+                  data-filled={slot ? "1" : "0"}
+                  data-held={held?.kind === "crate" && held.i === i ? "1" : "0"}
+                  draggable={Boolean(slot)}
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData("text/plain", JSON.stringify({ kind: "crate", i }));
+                  }}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    try {
+                      dropOnCrate(i, JSON.parse(e.dataTransfer.getData("text/plain")) as Held);
+                    } catch {
+                      /* ignore */
+                    }
+                  }}
+                >
+                  <SlotFace slot={slot} />
+                </div>
+              ))}
             </div>
-          ))}
+          ) : (
+          <div className="kit-col">
+            {EQUIP_SLOTS.map((row, i) => {
+              const slot = gameState.equipment[row.id];
+              return (
+                <div
+                  key={row.id}
+                  className="kit-slot"
+                  data-focus={focus === i ? "1" : "0"}
+                  data-filled={slot ? "1" : "0"}
+                  data-held={held?.kind === "eq" && held.id === row.id ? "1" : "0"}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    try {
+                      const from = JSON.parse(e.dataTransfer.getData("text/plain")) as Held;
+                      dropOnEq(row.id, from);
+                    } catch {
+                      /* ignore */
+                    }
+                  }}
+                  draggable={Boolean(slot)}
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData("text/plain", JSON.stringify({ kind: "eq", id: row.id }));
+                  }}
+                >
+                  <span className="kit-slot-label">{row.label}</span>
+                  <SlotFace slot={slot} />
+                </div>
+              );
+            })}
+          </div>
+          )}
+          <div className="inv-grid">
+            {gameState.inventory.map((slot, i) => (
+              <div
+                key={i}
+                className="inv-slot"
+                data-focus={focus === (crateMode ? CRATE_SIZE : KIT_COUNT) + i ? "1" : "0"}
+                data-filled={slot ? "1" : "0"}
+                data-held={held?.kind === "inv" && held.i === i ? "1" : "0"}
+                draggable={Boolean(slot)}
+                onDragStart={(e) => {
+                  e.dataTransfer.setData("text/plain", JSON.stringify({ kind: "inv", i }));
+                }}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  try {
+                    const from = JSON.parse(e.dataTransfer.getData("text/plain")) as Held;
+                    dropOnInv(i, from);
+                  } catch {
+                    /* ignore */
+                  }
+                }}
+              >
+                <SlotFace slot={slot} />
+              </div>
+            ))}
+          </div>
         </div>
+        <p className="pad-hint">Pad: D-pad moves the grid · A equip / unequip · B back</p>
         <div className="options-actions">
-          <button type="button" className="start-btn" data-focus={focus === INV_SIZE ? "1" : "0"} onClick={onBack}>
+          <button type="button" className="start-btn" data-focus={focus === (crateMode ? CRATE_SIZE + INV_SIZE : INV_BACK) ? "1" : "0"} onClick={onBack}>
             Back
           </button>
         </div>
@@ -427,50 +796,90 @@ function ControlsHub({
 
 function OptionsPanel({
   onClose,
-  onPlayers,
+  onQuit,
+  onSave,
   nav,
 }: {
   onClose: () => void;
-  onPlayers?: () => void;
+  onQuit?: () => void;
+  onSave?: () => void;
   nav: MenuNav | null;
 }) {
-  const [pane, setPane] = useState<"root" | "controls" | "inventory">("root");
+  const [pane, setPane] = useState<"root" | "controls" | "inventory" | "quit">("root");
   const [focus, setFocus] = useState(0);
+  const [saved, setSaved] = useState("");
   const seen = useRef(0);
   const opened = useRef(performance.now());
   const focusRef = useRef(0);
   focusRef.current = focus;
-  const items = onPlayers ? 4 : 3;
+  const items = onQuit ? 4 : 3;
+
+  const saveNow = () => {
+    onSave?.();
+    setSaved("Saved");
+    window.setTimeout(() => setSaved(""), 1400);
+  };
 
   useEffect(() => {
-    if (pane !== "root") {
+    if (pane !== "root" && pane !== "quit") {
       if (nav?.seq) seen.current = nav.seq;
       return;
     }
     if (performance.now() - opened.current < 320) return;
     const n = takeNav(nav, seen);
     if (!n) return;
+    if (pane === "quit") {
+      if (n.left || n.right || n.up || n.down) setFocus((i) => (i === 0 ? 1 : 0));
+      if (n.ok) {
+        if (focusRef.current === 1) onQuit?.();
+        else setPane("root");
+      }
+      if (n.back || n.menu) setPane("root");
+      return;
+    }
     if (n.down) setFocus((i) => (i + 1) % items);
     if (n.up) setFocus((i) => (i - 1 + items) % items);
     if (n.ok) {
       const at = focusRef.current;
       if (at === 0) setPane("inventory");
       else if (at === 1) setPane("controls");
-      else if (onPlayers && at === 2) onPlayers();
-      else onClose();
+      else if (onQuit && at === 2) saveNow();
+      else if (onQuit && at === 3) {
+        setFocus(0);
+        setPane("quit");
+      } else onClose();
     }
     if (n.back || n.menu) onClose();
-  }, [nav, pane, items, onClose, onPlayers]);
+  }, [nav, pane, items, onClose, onQuit]);
 
   if (pane === "inventory") return <InventoryPanel nav={nav} onBack={() => setPane("root")} />;
   if (pane === "controls") return <ControlsHub nav={nav} onBack={() => setPane("root")} onClose={onClose} />;
+  if (pane === "quit") {
+    return (
+      <div className="start-overlay options-overlay">
+        <div className="start-card options-card">
+          <p className="start-kicker">Paused</p>
+          <h2 className="options-title">Quit</h2>
+          <p className="start-copy">Are you sure you want to quit?</p>
+          <div className="options-actions menu-stack">
+            <button type="button" className="start-btn" data-focus={focus === 0 ? "1" : "0"} onClick={() => setPane("root")}>
+              No
+            </button>
+            <button type="button" className="touch-btn" data-focus={focus === 1 ? "1" : "0"} onClick={() => onQuit?.()}>
+              Yes, quit
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="start-overlay options-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="start-card options-card">
         <p className="start-kicker">Paused</p>
         <h2 className="options-title">Options</h2>
-        <p className="start-copy">D-pad up/down · A select · B or Menu back</p>
+        <p className="start-copy">D-pad up/down · A select · B or Menu back{saved ? ` · ${saved}` : ""}</p>
         <div className="options-actions menu-stack">
           <button type="button" className="start-btn" data-focus={focus === 0 ? "1" : "0"} onClick={() => setPane("inventory")}>
             Inventory
@@ -478,14 +887,20 @@ function OptionsPanel({
           <button type="button" className="touch-btn" data-focus={focus === 1 ? "1" : "0"} onClick={() => setPane("controls")}>
             Controls
           </button>
-          {onPlayers && (
-            <button type="button" className="touch-btn" data-focus={focus === 2 ? "1" : "0"} onClick={onPlayers}>
-              Players
+          {onQuit ? (
+            <>
+              <button type="button" className="touch-btn" data-focus={focus === 2 ? "1" : "0"} onClick={saveNow}>
+                Save
+              </button>
+              <button type="button" className="touch-btn" data-focus={focus === 3 ? "1" : "0"} onClick={() => { setFocus(0); setPane("quit"); }}>
+                Quit
+              </button>
+            </>
+          ) : (
+            <button type="button" className="touch-btn" data-focus={focus === 2 ? "1" : "0"} onClick={onClose}>
+              Resume
             </button>
           )}
-          <button type="button" className="touch-btn" data-focus={focus === items - 1 ? "1" : "0"} onClick={onClose}>
-            Resume
-          </button>
         </div>
       </div>
     </div>
@@ -510,7 +925,7 @@ function Roster({
       <div className="lobby-panel">
         <p className="start-kicker">Taters range</p>
         <h1 className="start-title">Players</h1>
-        <p className="start-copy">Make a shooter, then pick them to kit out before the range.</p>
+        <p className="start-copy">Make a shooter, then pick them to play. Kit is in Inventory.</p>
         {players.length === 0 ? (
           <p className="empty-note">No one yet. Make a player to start.</p>
         ) : (
@@ -721,67 +1136,14 @@ function Creator({
   );
 }
 
-function Setup({
-  name,
-  loadout,
-  focus,
-  onCycle,
-  onBack,
-  onPlay,
-}: {
-  name: string;
-  loadout: Loadout;
-  focus: number;
-  onCycle: (slot: ClothSlot, dir: 1 | -1) => void;
-  onBack: () => void;
-  onPlay: () => void;
-}) {
-  const backI = CLOTH_SLOTS.length;
-  const playI = backI + 1;
-  return (
-    <div className="start-overlay setup-overlay">
-      <div className="lobby-panel setup-panel">
-        <p className="start-kicker">{name}</p>
-        <h1 className="start-title">Kit</h1>
-        <p className="start-copy">A full set stays on. Only the head can come off. Swap peasant or ranger on each piece.</p>
-        <ul className="kit-list">
-          {CLOTH_SLOTS.map((slot, i) => (
-            <li key={slot.id} className="kit-row" data-focus={focus === i ? "1" : "0"}>
-              <span className="kit-label">{slot.label}</span>
-              <button type="button" className="kit-step" onClick={() => onCycle(slot.id, -1)} aria-label={`Previous ${slot.label}`}>
-                ‹
-              </button>
-              <span className="kit-value">{STYLE_LABEL[loadout[slot.id]]}</span>
-              <button type="button" className="kit-step" onClick={() => onCycle(slot.id, 1)} aria-label={`Next ${slot.label}`}>
-                ›
-              </button>
-            </li>
-          ))}
-        </ul>
-        <div className="options-actions">
-          <button type="button" className="touch-btn" data-focus={focus === backI ? "1" : "0"} onClick={onBack}>
-            Back
-          </button>
-          <button type="button" className="start-btn" data-focus={focus === playI ? "1" : "0"} onClick={onPlay}>
-            Play
-          </button>
-        </div>
-        <p className="pad-hint">Xbox: D-pad up/down slots · left/right change · A play · B back</p>
-      </div>
-    </div>
-  );
-}
-
 export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | null> }) {
   const [, setTick] = useState(0);
   const [playing, setPlaying] = useState(() => gameState.playing);
   const [menu, setMenu] = useState(false);
-  const [screen, setScreen] = useState<"roster" | "create" | "setup">("roster");
+  const [screen, setScreen] = useState<"roster" | "create">("roster");
   const [players, setPlayers] = useState<PlayerProfile[]>(() => loadPlayers());
   const [focus, setFocus] = useState(0);
   const [nav, setNav] = useState<MenuNav | null>(null);
-  const [editing, setEditing] = useState<PlayerProfile | null>(null);
-  const [kit, setKit] = useState<Loadout>(() => emptyLoadout());
 
   const playingRef = useRef(playing);
   const menuRef = useRef(menu);
@@ -795,9 +1157,6 @@ export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | nul
   focusRef.current = focus;
   const startRef = useRef<(p: PlayerProfile) => void>(() => {});
   const newRef = useRef<() => void>(() => {});
-  const kitCycleRef = useRef<(slot: ClothSlot, dir: 1 | -1) => void>(() => {});
-  const kitPlayRef = useRef<() => void>(() => {});
-  const kitBackRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     initInput();
@@ -828,26 +1187,9 @@ export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | nul
               setFocus(i);
             }
             if (n.ok) {
-              if (i < list.length) startRef.current(list[i]);
+              if (i < list.length) startRef.current(list[i]!);
               else newRef.current();
             }
-          } else if (scr === "setup") {
-            const count = CLOTH_SLOTS.length + 2;
-            if (n.down) i = (i + 1) % count;
-            if (n.up) i = (i - 1 + count) % count;
-            if (i !== focusRef.current) {
-              focusRef.current = i;
-              setFocus(i);
-            }
-            if (n.left || n.right) {
-              if (i < CLOTH_SLOTS.length) kitCycleRef.current(CLOTH_SLOTS[i]!.id, n.right ? 1 : -1);
-            }
-            if (n.ok) {
-              if (i < CLOTH_SLOTS.length) kitCycleRef.current(CLOTH_SLOTS[i]!.id, 1);
-              else if (i === CLOTH_SLOTS.length) kitBackRef.current();
-              else kitPlayRef.current();
-            }
-            if (n.back) kitBackRef.current();
           }
           setNav(n);
         } else {
@@ -856,6 +1198,7 @@ export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | nul
       } else {
         setNav(null);
       }
+      setInputMuted(menuRef.current || !playingRef.current || gameState.crateOpen);
       if (t - last > 50) {
         last = t;
         setTick((x) => x + 1);
@@ -867,29 +1210,40 @@ export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | nul
   }, []);
 
   useEffect(() => {
-    setInputMuted(menu || !playing);
-    if (menu) {
+    setInputMuted(menu || !playing || gameState.crateOpen);
+    if (menu || gameState.crateOpen) {
       cancelRebind();
       document.exitPointerLock?.();
     }
-  }, [menu, playing]);
+  }, [menu, playing, gameState.crateOpen]);
+
+  const persist = () => {
+    const list = saveCurrentInventory();
+    setPlayers(list);
+  };
 
   const start = (profile: PlayerProfile) => {
     unlockAudio();
-    const loadout = profile.loadout ?? emptyLoadout();
-    gameState.look = profile.look;
-    gameState.playerName = profile.name;
-    gameState.playerId = profile.id;
-    gameState.loadout = { ...loadout };
-    gameState.inventory = migrateInventory(profile.inventory);
-    gameState.setup = true;
-    setEditing(profile);
-    setKit({ ...loadout });
-    setScreen("setup");
-    setFocus(0);
-    focusRef.current = 0;
-    setPlaying(false);
-    gameState.playing = false;
+    const fresh = loadPlayers().find((p) => p.id === profile.id) ?? profile;
+    const inv = migrateInventory(fresh.inventory);
+    const eq = migrateEquipment(fresh.equipment);
+    const crate = migrateCrate(fresh.crate);
+    ensureStarterGear(inv, eq);
+    gameState.look = fresh.look;
+    gameState.playerName = fresh.name;
+    gameState.playerId = fresh.id;
+    gameState.loadout = emptyLoadout();
+    gameState.inventory = inv;
+    gameState.equipment = eq;
+    gameState.crate = crate;
+    gameState.crateOpen = false;
+    gameState.hands = syncHands(eq, "none");
+    gameState.setup = false;
+    setPlayers(loadPlayers());
+    setPlaying(true);
+    gameState.playing = true;
+    setMenu(false);
+    lockPointer(hostRef.current);
   };
   startRef.current = start;
   newRef.current = () => {
@@ -899,42 +1253,21 @@ export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | nul
     focusRef.current = 0;
   };
 
-  const cycleKit = (slot: ClothSlot, dir: 1 | -1) => {
-    setKit((prev) => {
-      const next = { ...prev, [slot]: cycleStyle(slot, prev[slot], dir) };
-      gameState.loadout = next;
-      return next;
-    });
-  };
-  kitCycleRef.current = cycleKit;
-
-  const playFromSetup = () => {
-    if (editing) {
-      const next = players.map((p) => (p.id === editing.id ? { ...p, loadout: { ...kit } } : p));
-      setPlayers(next);
-      savePlayers(next);
-    }
-    gameState.loadout = { ...kit };
-    gameState.setup = false;
-    setPlaying(true);
-    gameState.playing = true;
-    setMenu(false);
-    lockPointer(hostRef.current);
-  };
-  kitPlayRef.current = playFromSetup;
-
-  const backFromSetup = () => {
-    gameState.setup = false;
-    gameState.loadout = emptyLoadout();
-    setScreen("roster");
-    setFocus(0);
-    focusRef.current = 0;
-    setEditing(null);
-  };
-  kitBackRef.current = backFromSetup;
-
   const makePlayer = (name: string, look: LookId) => {
-    const next = [...players, { id: makeId(), name, look, loadout: emptyLoadout(), inventory: emptyInventory(), created: Date.now() }];
+    const inv = starterInventory();
+    const next = [
+      ...players,
+      {
+        id: makeId(),
+        name,
+        look,
+        loadout: emptyLoadout(),
+        inventory: inv,
+        equipment: emptyEquipment(),
+        crate: emptyCrate(),
+        created: Date.now(),
+      },
+    ];
     setPlayers(next);
     savePlayers(next);
     gameState.look = look;
@@ -950,9 +1283,11 @@ export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | nul
   };
 
   const toRoster = () => {
+    setPlayers(loadPlayers());
     setPlaying(false);
     gameState.playing = false;
     gameState.setup = false;
+    gameState.crateOpen = false;
     setMenu(false);
     setScreen("roster");
     setFocus(0);
@@ -1050,21 +1385,22 @@ export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | nul
           nav={nav}
         />
       )}
-      {!playing && screen === "setup" && (
-        <Setup
-          name={editing?.name || gameState.playerName || "Player"}
-          loadout={kit}
-          focus={focus}
-          onCycle={cycleKit}
-          onBack={backFromSetup}
-          onPlay={playFromSetup}
+      {playing && gameState.crateOpen && !menu && (
+        <InventoryPanel
+          mode="crate"
+          nav={nav}
+          onBack={() => {
+            gameState.crateOpen = false;
+            persist();
+            if (playing) lockPointer(hostRef.current);
+          }}
         />
       )}
-
       {menu && (
         <OptionsPanel
           onClose={playing ? closeMenu : () => setMenu(false)}
-          onPlayers={playing ? toRoster : undefined}
+          onQuit={playing ? toRoster : undefined}
+          onSave={playing ? persist : undefined}
           nav={nav}
         />
       )}
@@ -1093,7 +1429,7 @@ export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | nul
               <span className="hud-value tabular">{gameState.hits}</span>
             </div>
             <div className="hud-chip">
-              <span className="hud-label">{gameState.weapon === "Axe" ? "Tool" : "Gun"}</span>
+              <span className="hud-label">{gameState.hands === "tool" ? "Tool" : gameState.hands === "weapon" ? "Gun" : "Hands"}</span>
               <span className="hud-value">{gameState.weapon}</span>
             </div>
             <div className="hud-top-actions">
@@ -1117,8 +1453,10 @@ export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | nul
               </div>
             )}
             <div className="hud-ammo">
-              {gameState.weapon === "Axe" ? (
-                <span className="hud-ammo-mag">CHOP</span>
+              {gameState.hands === "none" ? (
+                <span className="hud-ammo-mag">—</span>
+              ) : gameState.hands === "tool" ? (
+                <span className="hud-ammo-mag">AXE</span>
               ) : (
                 <>
                   <span className="hud-ammo-mag tabular">

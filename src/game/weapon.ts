@@ -3,7 +3,7 @@ import { MTLLoader } from "three/addons/loaders/MTLLoader.js";
 import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
 import * as THREE from "three";
 
-export type WeaponId = "pistol" | "ar" | "shotgun" | "axe";
+export type WeaponId = "pistol" | "shotgun" | "axe";
 
 export type WeaponDef = {
   id: WeaponId;
@@ -33,7 +33,6 @@ export type WeaponDef = {
 
 export const WEAPONS: WeaponDef[] = [
   { id: "pistol", name: "Pistol", mag: 12, reserve: 36, fireCd: 0.15, reload: 1.35, recoil: 0.038, length: 0.26, gripBack: 0.055, drop: 0.012, hold: [-0.034, 0.100, 0.036], holdRot: [Math.PI / 2, -0.18, 0], adsBack: 0.4, adsUp: 0.07, obj: "/models/weapon/quaternius/Pistol_1.obj", mtl: "/models/weapon/quaternius/Pistol_1.mtl" },
-  { id: "ar", name: "Rifle", mag: 30, reserve: 90, fireCd: 0.1, reload: 2.05, recoil: 0.032, length: 0.78, gripBack: 0.30, drop: 0.02, hold: [-0.0, 0.32, 0.028], holdRot: [Math.PI / 2, -0.18, 0], adsBack: 0.5, adsUp: 0.144, obj: "/models/weapon/quaternius/AssaultRifle_1.obj", mtl: "/models/weapon/quaternius/AssaultRifle_1.mtl" },
   { id: "shotgun", name: "Shotgun", mag: 6, reserve: 24, fireCd: 0.55, reload: 2.4, recoil: 0.07, length: 0.72, gripBack: 0.27, drop: 0.016, hold: [-0.035, 0.16, 0.055], holdRot: [Math.PI / 2, -0.18, 0], adsBack: 0.3, adsUp: 0.05, obj: "/models/weapon/quaternius/Shotgun_1.obj", mtl: "/models/weapon/quaternius/Shotgun_1.mtl" },
   { id: "axe", name: "Axe", mag: 0, reserve: 0, fireCd: 0.95, reload: 0, recoil: 0.02, length: 0.7, gripBack: 0.2, drop: 0.02, hold: [-0.1, 0.24, 0.03], holdRot: [Math.PI / 2, 3.5, 0.15], adsBack: 0.12, adsUp: 0.02, melee: true, tool: true, obj: "/models/tools/axe.glb", mtl: "" },
 ];
@@ -194,7 +193,7 @@ function getGun(def: WeaponDef): Promise<THREE.Object3D> {
 
 export type WeaponHandle = {
   root: THREE.Group;
-  setId: (id: WeaponId) => void;
+  setId: (id: WeaponId | null) => void;
   setLowered: (low: boolean) => void;
   aimAt: (target: THREE.Vector3 | null, blend?: number) => void;
   /** Trigger origin, barrel (−Z), and gun-up. Returns camera distance behind the origin. */
@@ -232,20 +231,20 @@ export function attachWeapons(hand: THREE.Object3D): WeaponHandle {
   root.name = "WeaponHold";
   hand.add(root);
   const { slots, ready } = fill(root);
-  let current: WeaponId = "ar";
-  const holdOf = (id: WeaponId) => WEAPONS.find((w) => w.id === id) ?? WEAPONS[1];
+  let current: WeaponId | null = null;
+  const holdOf = (id: WeaponId) => WEAPONS.find((w) => w.id === id) ?? WEAPONS[0]!;
   const applyHold = () => {
+    if (!current) return;
     const def = holdOf(current);
     const h = def.hold;
     const r = def.holdRot;
     root.position.set(h[0], h[1], h[2]);
     root.rotation.set(r[0], r[1], r[2]);
   };
-  applyHold();
-  const show = (id: WeaponId) => {
+  const show = (id: WeaponId | null) => {
     current = id;
     for (const key of Object.keys(slots) as WeaponId[]) {
-      if (slots[key]) slots[key].visible = key === id;
+      if (slots[key]) slots[key].visible = id !== null && key === id;
     }
     applyHold();
   };
@@ -284,12 +283,12 @@ export function attachWeapons(hand: THREE.Object3D): WeaponHandle {
       // Wrap is identity; hold −Z is the barrel after Ry(90) on the OBJ.
       // Sampling the child mesh −Z was the gun's width, which parked the
       // camera beside the receiver instead of on the sights.
-      const wrap = slots[current] ?? root;
+      const wrap = (current && slots[current]) || root;
       wrap.updateWorldMatrix(true, false);
       origin.setFromMatrixPosition(wrap.matrixWorld);
       barrel.set(0, 0, -1).transformDirection(wrap.matrixWorld).normalize();
       up.set(0, 1, 0).transformDirection(wrap.matrixWorld).normalize();
-      const def = holdOf(current);
+      const def = current ? holdOf(current) : WEAPONS[0]!;
       return Math.max(0.2, def.gripBack + 0.1);
     },
     children: () => root.children.length,
@@ -310,11 +309,11 @@ export function makeViewmodel(): WeaponHandle {
   root.rotation.copy(hipRot);
 
   const { slots, ready } = fill(root);
-  let current: WeaponId = "ar";
-  const show = (id: WeaponId) => {
+  let current: WeaponId | null = null;
+  const show = (id: WeaponId | null) => {
     current = id;
     for (const key of Object.keys(slots) as WeaponId[]) {
-      if (slots[key]) slots[key].visible = key === id;
+      if (slots[key]) slots[key].visible = id !== null && key === id;
     }
   };
   void ready.then(() => show(current));

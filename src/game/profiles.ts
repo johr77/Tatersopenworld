@@ -1,4 +1,13 @@
-import { emptyInventory, migrateInventory, type InvSlot } from "./inventory";
+import {
+  emptyEquipment,
+  emptyInventory,
+  ensureStarterGear,
+  migrateCrate,
+  migrateEquipment,
+  migrateInventory,
+  type Equipment,
+  type InvSlot,
+} from "./inventory";
 import { gameState } from "./state";
 import { emptyLoadout, migrateLoadout, type Loadout } from "./wardrobe";
 
@@ -10,6 +19,8 @@ export type PlayerProfile = {
   look: LookId;
   loadout: Loadout;
   inventory: InvSlot[];
+  equipment: Equipment;
+  crate: InvSlot[];
   created: number;
 };
 
@@ -54,8 +65,10 @@ export function loadPlayers(): PlayerProfile[] {
       .map((p) => ({
         ...p,
         look: migrateLook(p.look),
-        loadout: migrateLoadout(p.loadout),
+        loadout: emptyLoadout(),
         inventory: migrateInventory(p.inventory),
+        equipment: migrateEquipment((p as PlayerProfile).equipment),
+        crate: migrateCrate((p as PlayerProfile).crate),
       }));
   } catch {
     return [];
@@ -76,9 +89,20 @@ export function makeId() {
 
 export function saveCurrentInventory() {
   const id = gameState.playerId;
-  if (!id) return;
-  const list = loadPlayers().map((p) =>
-    p.id === id ? { ...p, inventory: gameState.inventory.map((s) => (s ? { ...s } : null)) } : p,
+  const list = loadPlayers();
+  if (!id) return list;
+  const next = list.map((p) =>
+    p.id === id
+      ? {
+          ...p,
+          inventory: gameState.inventory.map((s) => (s ? { ...s } : null)),
+          equipment: { ...gameState.equipment },
+          crate: gameState.crate.map((s) => (s ? { ...s } : null)),
+        }
+      : p,
   );
-  savePlayers(list);
+  savePlayers(next);
+  return next;
 }
+
+export { ensureStarterGear };

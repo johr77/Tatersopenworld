@@ -1,5 +1,5 @@
 import type { LookId } from "./profiles";
-import { emptyInventory, type InvSlot } from "./inventory";
+import { emptyCrate, emptyEquipment, emptyInventory, type Equipment, type Hands, type InvSlot } from "./inventory";
 import { emptyLoadout, type Loadout } from "./wardrobe";
 
 export type ViewMode = "fps" | "third";
@@ -12,6 +12,10 @@ export const gameState = {
   look: "hero-female" as LookId,
   loadout: emptyLoadout() as Loadout,
   inventory: emptyInventory() as InvSlot[],
+  equipment: emptyEquipment() as Equipment,
+  crate: emptyCrate() as InvSlot[],
+  crateOpen: false,
+  hands: "none" as Hands,
   playerId: "",
   playerName: "",
   yaw: 0,
@@ -36,7 +40,7 @@ export const gameState = {
   pad: false,
   padId: "",
   menuPulse: false,
-  weapon: "Rifle",
+  weapon: "—",
   prompt: "",
 };
 

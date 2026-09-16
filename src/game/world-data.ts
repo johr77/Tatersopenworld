@@ -106,6 +106,34 @@ function scatterWeeds(): WeedPlace[] {
 }
 
 export const WEEDS: WeedPlace[] = scatterWeeds();
+
+export type StonePlace = { id: number; x: number; z: number; rot: number; scale: number; file: string };
+
+function scatterStones(): StonePlace[] {
+  const files = ["Pebble_Round_1", "Pebble_Round_2", "Pebble_Round_3"];
+  const out: StonePlace[] = [];
+  const cx = 0;
+  const cz = 12;
+  for (let i = 0; i < 14; i++) {
+    const a = (i / 14) * Math.PI * 2 + 0.8;
+    const r = 3.1 + (i % 4) * 1.05;
+    const x = cx + Math.sin(a) * r;
+    const z = cz + Math.cos(a) * r;
+    if (Math.hypot(x - cx, z - cz) < 1.8) continue;
+    out.push({
+      id: out.length,
+      x,
+      z,
+      rot: i * 1.1,
+      scale: 0.55 + (i % 3) * 0.12,
+      file: files[i % files.length]!,
+    });
+  }
+  return out;
+}
+
+export const STONES: StonePlace[] = scatterStones();
+export const STASH = { x: 2.8, z: -0.6, rot: -0.35, scale: 1.05 };
 export const BUILDINGS: BuildPlace[] = [];
 
 export const TARGETS: TargetDef[] = [
@@ -132,6 +160,7 @@ export const COLLIDERS = [
     z: t.z,
     r: t.type === "crate" ? 0.45 : 0.4,
   })),
+  { id: -2, x: STASH.x, z: STASH.z, r: 0.55 },
 ];
 
 export const BOXES: { minX: number; maxX: number; minZ: number; maxZ: number }[] = [];

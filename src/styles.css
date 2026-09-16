@@ -563,11 +563,67 @@
   pointer-events: none;
 }
 
+.inv-card {
+  width: min(720px, 100%);
+}
+
+.inv-layout {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  gap: 14px;
+  align-items: start;
+  margin: 8px 0 12px;
+}
+
+.inv-layout.crate-layout {
+  grid-template-columns: 1fr 1fr;
+}
+
+.kit-col {
+  display: grid;
+  gap: 8px;
+}
+
+.kit-slot {
+  position: relative;
+  min-height: 72px;
+  border: 1px dashed color-mix(in oklab, var(--color-fg) 28%, transparent);
+  border-radius: 10px;
+  background: color-mix(in oklab, var(--color-bg) 45%, transparent);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 14px 6px 6px;
+}
+
+.kit-slot-label {
+  position: absolute;
+  top: 4px;
+  left: 6px;
+  font-size: 0.65rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+
+.kit-slot[data-focus="1"],
+.kit-slot[data-held="1"],
+.inv-slot[data-held="1"] {
+  border-color: var(--color-accent);
+  border-style: solid;
+}
+
+.kit-slot[data-filled="1"] {
+  border-style: solid;
+  background: color-mix(in oklab, #3a4a38 40%, var(--color-bg));
+}
+
 .inv-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 10px;
-  margin: 8px 0 18px;
 }
 
 .inv-slot {

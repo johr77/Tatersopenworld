@@ -7,6 +7,8 @@ import * as THREE from "three";
 import {
   MEGA_TREE_FILES,
   TARGETS,
+  STASH,
+  STONES,
   TREES,
   WEEDS,
   markFallen,
@@ -14,10 +16,14 @@ import {
   type TreePlace,
 } from "./world-data";
 import { loadBuild } from "./props";
+import { gameState } from "./state";
 
 for (const file of MEGA_TREE_FILES) useGLTF.preload(`/models/nature/${file}.gltf`);
 useGLTF.preload("/models/nature/Grass_Wispy_Short.gltf");
 useGLTF.preload("/models/nature/Grass_Wispy_Tall.gltf");
+useGLTF.preload("/models/nature/Pebble_Round_1.gltf");
+useGLTF.preload("/models/nature/Pebble_Round_2.gltf");
+useGLTF.preload("/models/nature/Pebble_Round_3.gltf");
 
 function ChopPine({ tree }: { tree: TreePlace }) {
   const { scene } = useGLTF(`/models/nature/${tree.file}.gltf`);
@@ -70,6 +76,7 @@ function PickWeed({ weed }: { weed: (typeof WEEDS)[number] }) {
   const hideIn = useRef(-1);
   const data = useMemo(
     () => ({
+      kind: "weed",
       use: () => {
         if (gone.current || !ref.current) return false;
         gone.current = true;
@@ -96,6 +103,65 @@ function PickWeed({ weed }: { weed: (typeof WEEDS)[number] }) {
   return (
     <group ref={ref} position={[weed.x, 0, weed.z]} rotation={[0, weed.rot, 0]} scale={weed.scale} userData={data}>
       <Clone object={scene} />
+    </group>
+  );
+}
+
+function PickStone({ stone }: { stone: (typeof STONES)[number] }) {
+  const { scene } = useGLTF(`/models/nature/${stone.file}.gltf`);
+  const ref = useRef<THREE.Group>(null);
+  const gone = useRef(false);
+  const hideIn = useRef(-1);
+  const data = useMemo(
+    () => ({
+      kind: "stone",
+      use: () => {
+        if (gone.current || !ref.current) return false;
+        gone.current = true;
+        ref.current.userData.picked = true;
+        hideIn.current = 0.4;
+        return true;
+      },
+      pull: (delay: number) => {
+        hideIn.current = delay;
+      },
+    }),
+    [],
+  );
+  useFrame((_, dt) => {
+    if (hideIn.current < 0 || !ref.current) return;
+    hideIn.current -= dt;
+    if (hideIn.current > 0) return;
+    hideIn.current = -1;
+    ref.current.visible = false;
+    ref.current.traverse((o) => {
+      o.raycast = () => {};
+    });
+  });
+  return (
+    <group ref={ref} position={[stone.x, 0, stone.z]} rotation={[0, stone.rot, 0]} scale={stone.scale} userData={data}>
+      <Clone object={scene} />
+    </group>
+  );
+}
+
+function StorageCrate() {
+  const tpl = useBuildTemplate("Crate");
+  const obj = useMemo(() => (tpl ? tpl.clone(true) : null), [tpl]);
+  const data = useMemo(
+    () => ({
+      kind: "stash",
+      use: () => {
+        gameState.crateOpen = true;
+        return true;
+      },
+    }),
+    [],
+  );
+  if (!obj) return null;
+  return (
+    <group position={[STASH.x, 0, STASH.z]} rotation={[0, STASH.rot, 0]} scale={STASH.scale} userData={data}>
+      <primitive object={obj} />
     </group>
   );
 }
@@ -286,10 +352,10 @@ export function World() {
   return (
     <>
       <Environment
-        files="/textures/sky/kloofendal_overcast_1k.hdr"
+        files="/textures/sky/kloofendal_48d_partly_cloudy_puresky_1k.exr"
         background
-        backgroundIntensity={1.12}
-        environmentIntensity={0.48}
+        backgroundIntensity={1.05}
+        environmentIntensity={0.52}
       />
       <hemisphereLight args={["#c9d3dc", "#3a4334", 0.55]} />
       <directionalLight
@@ -304,7 +370,7 @@ export function World() {
         shadow-camera-bottom={-22}
         color="#e8ece8"
       />
-      <fog attach="fog" args={["#8b97a0", 70, 160]} />
+      <fog attach="fog" args={["#9aaec0", 80, 180]} />
       <Ground />
       {MEGA_TREE_FILES.map((file) => (
         <MegaKind key={`mega-${file}`} file={file} items={TREES} />
@@ -312,6 +378,10 @@ export function World() {
       {WEEDS.map((w) => (
         <PickWeed key={`weed-${w.id}`} weed={w} />
       ))}
+      {STONES.map((s) => (
+        <PickStone key={`stone-${s.id}`} stone={s} />
+      ))}
+      <StorageCrate />
       <RangeTargets />
     </>
   );
