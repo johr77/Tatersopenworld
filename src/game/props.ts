@@ -81,6 +81,20 @@ export function loadBuild(name: string): Promise<THREE.Group> {
     const finish = (group: THREE.Group) => {
       harden(group);
       plant(group);
+      if (name === "floor") {
+        group.traverse((o) => {
+          const mesh = o as THREE.Mesh;
+          if (!mesh.isMesh) return;
+          const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+          for (const raw of mats) {
+            const mat = raw as THREE.MeshStandardMaterial;
+            if (!mat) continue;
+            mat.polygonOffset = true;
+            mat.polygonOffsetFactor = 1;
+            mat.polygonOffsetUnits = 1;
+          }
+        });
+      }
       templates[name] = group;
       resolve(group);
     };

@@ -105,11 +105,16 @@ export function yawAngle(yaw = gameState.buildYaw) {
 }
 
 export function pieceShift(kind: BuildKind = pieceById().kind, yaw = gameState.buildYaw) {
-  if (kind === "wall" || kind === "wall-doorway-square") {
-    const a = yawAngle(yaw);
-    return { x: Math.cos(a), z: -Math.sin(a) };
-  }
-  return { x: 0, z: 0 };
+  let inset = 0;
+  if (kind === "wall") inset = 0.95;
+  else if (kind === "wall-doorway-square") inset = 0.9;
+  else return { x: 0, z: 0 };
+  const a = yawAngle(yaw);
+  return { x: Math.cos(a) * inset, z: -Math.sin(a) * inset };
+}
+
+export function pieceY(kind: BuildKind) {
+  return kind === "floor" ? 0 : 0.1;
 }
 
 function occKeys(kind: BuildKind, x: number, z: number, rot: number): string[] {
@@ -187,6 +192,7 @@ export function ghostPose() {
   return {
     x,
     z,
+    y: pieceY(def.kind),
     rot: yawAngle(),
     kind: def.kind,
     scale: def.scale,
