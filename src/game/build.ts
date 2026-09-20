@@ -104,6 +104,10 @@ export function yawAngle(yaw = gameState.buildYaw) {
   return (yaw * Math.PI) / 2;
 }
 
+export function yawIndex(rot: number) {
+  return ((Math.round(rot / (Math.PI / 2)) % 4) + 4) % 4;
+}
+
 export function pieceShift(kind: BuildKind = pieceById().kind, yaw = gameState.buildYaw) {
   let inset = 0;
   if (kind === "wall") inset = 0.95;
@@ -117,20 +121,31 @@ export function pieceY(kind: BuildKind) {
   return kind === "floor" ? 0 : 0.1;
 }
 
+export function placedPose(place: { kind: BuildKind; x: number; z: number; rot: number }) {
+  const off = pieceShift(place.kind, yawIndex(place.rot));
+  return { x: place.x + off.x, y: pieceY(place.kind), z: place.z + off.z };
+}
+
+function cornerEdges(gx: number, gz: number, yaw: number) {
+  const east = `e:x:${gx * GRID + GRID / 2}:${gz}`;
+  const west = `e:x:${gx * GRID - GRID / 2}:${gz}`;
+  const north = `e:z:${gz * GRID + GRID / 2}:${gx}`;
+  const south = `e:z:${gz * GRID - GRID / 2}:${gx}`;
+  if (yaw === 0) return [east, north];
+  if (yaw === 1) return [south, east];
+  if (yaw === 2) return [west, south];
+  return [north, west];
+}
+
 function occKeys(kind: BuildKind, x: number, z: number, rot: number): string[] {
-  if (kind === "floor") {
-    const gx = Math.round(x / GRID);
-    const gz = Math.round(z / GRID);
-    return [`f:${gx},${gz}`];
-  }
-  if (kind === "wall-corner") {
-    const gx = Math.round(x / GRID);
-    const gz = Math.round(z / GRID);
-    return [`e:x:${gx * GRID + GRID / 2}:${gz}`, `e:z:${gz * GRID + GRID / 2}:${gx}`];
-  }
-  const yaw = ((Math.round(rot / (Math.PI / 2)) % 4) + 4) % 4;
-  if (yaw % 2 === 0) return [`e:x:${Math.round(x)}:${Math.round(z / GRID)}`];
-  return [`e:z:${Math.round(z)}:${Math.round(x / GRID)}`];
+  const gx = Math.round(x / GRID);
+  const gz = Math.round(z / GRID);
+  const yaw = yawIndex(rot);
+  if (kind === "floor") return [`f:${gx},${gz}`];
+  if (kind === "wall-corner") return cornerEdges(gx, gz, yaw);
+  const off = pieceShift(kind, yaw);
+  if (yaw % 2 === 0) return [`e:x:${Math.round(x + off.x)}:${gz}`];
+  return [`e:z:${Math.round(z + off.z)}:${gx}`];
 }
 
 export function canPlace(kind: BuildKind, x: number, z: number, rot = yawAngle()) {
@@ -145,16 +160,15 @@ export function canPlace(kind: BuildKind, x: number, z: number, rot = yawAngle()
 export function placeAt(x: number, z: number) {
   const def = pieceById();
   const rot = yawAngle();
-  if (!canPlace(def.kind, x, z, rot)) return false;
-  gameState.buildings.push({ kind: def.kind, x, z, rot, scale: def.scale });
+  const cell = snapXZ(x, z);
+  if (!canPlace(def.kind, cell.x, cell.z, rot)) return false;
+  gameState.buildings.push({ kind: def.kind, x: cell.x, z: cell.z, rot, scale: def.scale });
   bump();
   return true;
 }
 
 export function placeCurrent() {
-  const def = pieceById();
-  const off = pieceShift(def.kind);
-  return placeAt(gameState.buildX + off.x, gameState.buildZ + off.z);
+  return placeAt(gameState.buildX, gameState.buildZ);
 }
 
 export function deleteAt(index: number) {
@@ -186,17 +200,16 @@ export function cancelDelete() {
 export function ghostPose() {
   if (gameState.buildTool === "delete") return null;
   const def = pieceById();
+  const rot = yawAngle();
   const off = pieceShift(def.kind);
-  const x = gameState.buildX + off.x;
-  const z = gameState.buildZ + off.z;
   return {
-    x,
-    z,
+    x: gameState.buildX + off.x,
+    z: gameState.buildZ + off.z,
     y: pieceY(def.kind),
-    rot: yawAngle(),
+    rot,
     kind: def.kind,
     scale: def.scale,
-    ok: canPlace(def.kind, x, z, yawAngle()),
+    ok: canPlace(def.kind, gameState.buildX, gameState.buildZ, rot),
   };
 }
 
@@ -219,11 +232,21 @@ export function migrateBuildings(raw: BuildPlace[] | undefined): BuildPlace[] {
   const kinds = new Set(PIECES.map((p) => p.kind));
   return raw
     .filter((b) => b && kinds.has(b.kind) && Number.isFinite(b.x) && Number.isFinite(b.z))
-    .map((b) => ({
-      kind: b.kind,
-      x: b.x,
-      z: b.z,
-      rot: Number.isFinite(b.rot) ? b.rot : 0,
-      scale: Number.isFinite(b.scale) ? b.scale : 1,
-    }));
+    .map((b) => {
+      let x = b.x;
+      let z = b.z;
+      if (b.kind === "wall" || b.kind === "wall-doorway-square") {
+        const a = yawIndex(b.rot) * (Math.PI / 2);
+        x -= Math.cos(a);
+        z += Math.sin(a);
+      }
+      const cell = snapXZ(x, z);
+      return {
+        kind: b.kind,
+        x: cell.x,
+        z: cell.z,
+        rot: Number.isFinite(b.rot) ? b.rot : 0,
+        scale: Number.isFinite(b.scale) ? b.scale : 1,
+      };
+    });
 }
