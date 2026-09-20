@@ -37,6 +37,8 @@ import {
   EQUIP_SLOTS,
   HAND_SLOTS,
   INV_SIZE,
+  INV_COLS,
+  ITEM_ICON,
   ITEM_LABEL,
   canFit,
   emptyCrate,
@@ -223,6 +225,18 @@ function LogIcon() {
 }
 
 function ItemGlyph({ id }: { id: NonNullable<InvSlot>["id"] }) {
+  const [bad, setBad] = useState(false);
+  if (!bad) {
+    return (
+      <img
+        className="inv-icon"
+        src={ITEM_ICON[id]}
+        alt=""
+        draggable={false}
+        onError={() => setBad(true)}
+      />
+    );
+  }
   if (id === "strand") return <StrandIcon />;
   if (id === "pistol") return <PistolIcon />;
   if (id === "shotgun") return <ShotgunIcon />;
@@ -244,7 +258,6 @@ function SlotFace({ slot }: { slot: InvSlot }) {
 }
 
 const KIT_COUNT = HAND_SLOTS.length;
-const INV_COLS = 3;
 const INV_BACK = KIT_COUNT + INV_SIZE;
 
 type Held =
@@ -268,6 +281,105 @@ function firstEmptyPocket() {
   return gameState.inventory.findIndex((s) => !s);
 }
 
+function SlotCell({
+  slot,
+  focused,
+  held,
+  payload,
+  onDropHeld,
+}: {
+  slot: InvSlot;
+  focused: boolean;
+  held: boolean;
+  payload: Held;
+  onDropHeld: (from: Held) => void;
+}) {
+  return (
+    <div
+      className="inv-slot"
+      data-focus={focused ? "1" : "0"}
+      data-filled={slot ? "1" : "0"}
+      data-held={held ? "1" : "0"}
+      draggable={Boolean(slot)}
+      onDragStart={(e) => {
+        if (!payload) return;
+        e.dataTransfer.setData("text/plain", JSON.stringify(payload));
+      }}
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={(e) => {
+        e.preventDefault();
+        try {
+          onDropHeld(JSON.parse(e.dataTransfer.getData("text/plain")) as Held);
+        } catch {
+          /* ignore */
+        }
+      }}
+    >
+      <SlotFace slot={slot} />
+    </div>
+  );
+}
+
+function PackGrid({
+  focusBase,
+  focus,
+  held,
+  onDrop,
+}: {
+  focusBase: number;
+  focus: number;
+  held: Held;
+  onDrop: (i: number, from: Held) => void;
+}) {
+  return (
+    <div className="inv-grid">
+      {gameState.inventory.map((slot, i) => (
+        <SlotCell
+          key={i}
+          slot={slot}
+          focused={focus === focusBase + i}
+          held={held?.kind === "inv" && held.i === i}
+          payload={{ kind: "inv", i }}
+          onDropHeld={(from) => onDrop(i, from)}
+        />
+      ))}
+    </div>
+  );
+}
+
+function ChestGrid({
+  focus,
+  held,
+  onDrop,
+}: {
+  focus: number;
+  held: Held;
+  onDrop: (i: number, from: Held) => void;
+}) {
+  return (
+    <div className="inv-grid">
+      {gameState.crate.map((slot, i) => (
+        <SlotCell
+          key={i}
+          slot={slot}
+          focused={focus === i}
+          held={held?.kind === "crate" && held.i === i}
+          payload={{ kind: "crate", i }}
+          onDropHeld={(from) => onDrop(i, from)}
+        />
+      ))}
+    </div>
+  );
+}
+
+function heldLabel(h: Held) {
+  if (!h) return "";
+  if (h.kind === "inv") return gameState.inventory[h.i] ? ITEM_LABEL[gameState.inventory[h.i]!.id] : "";
+  if (h.kind === "crate") return gameState.crate[h.i] ? ITEM_LABEL[gameState.crate[h.i]!.id] : "";
+  const item = gameState.equipment[h.id];
+  return item ? ITEM_LABEL[item.id] : "";
+}
+
 function InventoryPanel({
   onBack,
   nav,
@@ -280,7 +392,8 @@ function InventoryPanel({
   const [, bump] = useState(0);
   const refresh = () => bump((n) => n + 1);
   const crateMode = mode === "crate";
-  const [focus, setFocus] = useState(crateMode ? CRATE_SIZE : KIT_COUNT);
+  const closeIdx = crateMode ? CRATE_SIZE + INV_SIZE : INV_BACK;
+  const [focus, setFocus] = useState(crateMode ? 0 : KIT_COUNT);
   const [held, setHeld] = useState<Held>(null);
   const seen = useRef(nav?.seq ?? 0);
   const focusRef = useRef(0);
@@ -356,6 +469,17 @@ function InventoryPanel({
     }
   };
 
+  const pickOrPlace = (kind: "inv" | "crate", i: number) => {
+    const carry = heldRef.current;
+    if (kind === "crate") {
+      if (carry) dropOnCrate(i, carry);
+      else if (gameState.crate[i]) setHeld({ kind: "crate", i });
+      return;
+    }
+    if (carry) dropOnInv(i, carry);
+    else if (gameState.inventory[i]) setHeld({ kind: "inv", i });
+  };
+
   useEffect(() => {
     const n = takeNav(nav, seen);
     if (!n) return;
@@ -363,33 +487,34 @@ function InventoryPanel({
     const carry = heldRef.current;
     if (n.left || n.right || n.up || n.down) {
       if (crateMode) {
-        const back = CRATE_SIZE + INV_SIZE;
         if (at < CRATE_SIZE) {
           const r = Math.floor(at / INV_COLS);
           const c = at % INV_COLS;
           if (n.left && c > 0) setFocus(at - 1);
           else if (n.right) {
-            if (c < INV_COLS - 1 && at + 1 < CRATE_SIZE) setFocus(at + 1);
+            if (c < INV_COLS - 1) setFocus(at + 1);
             else setFocus(CRATE_SIZE + r * INV_COLS);
-          } else if (n.up) setFocus(r > 0 ? at - INV_COLS : back);
-          else if (n.down) setFocus(at + INV_COLS < CRATE_SIZE ? at + INV_COLS : back);
+          } else if (n.up) setFocus(r > 0 ? at - INV_COLS : closeIdx);
+          else if (n.down) setFocus(at + INV_COLS < CRATE_SIZE ? at + INV_COLS : closeIdx);
           return;
         }
-        if (at < back) {
+        if (at < closeIdx) {
           const i = at - CRATE_SIZE;
           const r = Math.floor(i / INV_COLS);
           const c = i % INV_COLS;
           if (n.left) {
             if (c > 0) setFocus(at - 1);
-            else setFocus(Math.min(CRATE_SIZE - 1, r * INV_COLS + 2));
+            else setFocus(r * INV_COLS + (INV_COLS - 1));
           } else if (n.right) {
             if (c < INV_COLS - 1 && i + 1 < INV_SIZE) setFocus(at + 1);
-          } else if (n.up) setFocus(r > 0 ? at - INV_COLS : 0);
-          else if (n.down) setFocus(i + INV_COLS < INV_SIZE ? at + INV_COLS : back);
+          } else if (n.up) setFocus(r > 0 ? at - INV_COLS : closeIdx);
+          else if (n.down) setFocus(i + INV_COLS < INV_SIZE ? at + INV_COLS : closeIdx);
           return;
         }
-        if (n.up) setFocus(CRATE_SIZE + INV_COLS);
+        if (n.up) setFocus(CRATE_SIZE + INV_COLS * 2);
         else if (n.down) setFocus(0);
+        else if (n.left) setFocus(CRATE_SIZE - 1);
+        else if (n.right) setFocus(closeIdx - 1);
         return;
       }
       if (at < KIT_COUNT) {
@@ -405,7 +530,6 @@ function InventoryPanel({
         const c = i % INV_COLS;
         if (n.left) {
           if (c > 0) setFocus(at - 1);
-          else setFocus(Math.min(KIT_COUNT - 1, r === 0 ? 0 : 2));
         } else if (n.right) {
           if (c < INV_COLS - 1 && i + 1 < INV_SIZE) setFocus(at + 1);
         } else if (n.up) {
@@ -418,9 +542,9 @@ function InventoryPanel({
         }
         return;
       }
-      if (n.up) setFocus(KIT_COUNT + INV_COLS);
+      if (n.up) setFocus(KIT_COUNT + INV_COLS * 2);
       else if (n.down) setFocus(0);
-      else if (n.left) setFocus(KIT_COUNT - 1);
+      else if (n.left) setFocus(KIT_COUNT);
       else if (n.right) setFocus(INV_BACK - 1);
       return;
     }
@@ -430,24 +554,13 @@ function InventoryPanel({
       return;
     }
     if (!n.ok) return;
-    if (crateMode) {
-      const back = CRATE_SIZE + INV_SIZE;
-      if (at === back) {
-        onBack();
-        return;
-      }
-      if (at < CRATE_SIZE) {
-        if (carry) dropOnCrate(at, carry);
-        else if (gameState.crate[at]) setHeld({ kind: "crate", i: at });
-        return;
-      }
-      const i = at - CRATE_SIZE;
-      if (carry) dropOnInv(i, carry);
-      else if (gameState.inventory[i]) setHeld({ kind: "inv", i });
+    if (at === closeIdx) {
+      onBack();
       return;
     }
-    if (at === INV_BACK) {
-      onBack();
+    if (crateMode) {
+      if (at < CRATE_SIZE) pickOrPlace("crate", at);
+      else pickOrPlace("inv", at - CRATE_SIZE);
       return;
     }
     if (at < KIT_COUNT) {
@@ -466,59 +579,38 @@ function InventoryPanel({
       dropOnEq(kit, { kind: "inv", i });
       return;
     }
-    if (carry) dropOnInv(i, carry);
-    else if (item) setHeld({ kind: "inv", i });
+    pickOrPlace("inv", i);
   }, [nav]);
   useEffect(() => {
     const el = cardRef.current?.querySelector("[data-focus='1']");
     el?.scrollIntoView({ block: "nearest" });
   }, [focus]);
 
-  return (
-    <div className="start-overlay options-overlay" onClick={(e) => { if (e.target === e.currentTarget) onBack(); }}>
-      <div className="start-card options-card inv-card" ref={cardRef}>
-        <p className="start-kicker">{gameState.playerName || "Player"}</p>
-        <h2 className="options-title">{crateMode ? "Chest" : "Inventory"}</h2>
-        <p className="start-copy">
-          {crateMode
-            ? "Chest on the left, backpack on the right. Drop the same item on another to stack."
-            : "Your pack. Drop the same item on another to stack. A equips pistol, shotgun, or axe."}
-        </p>
-        <div className={`inv-layout${crateMode ? " crate-layout" : " inv-pack"}`}>
-          {crateMode ? (
-            <div className="inv-pane">
-              <h3 className="inv-pane-title">Chest</h3>
-              <div className="inv-grid crate-grid">
-              {gameState.crate.map((slot, i) => (
-                <div
-                  key={`c-${i}`}
-                  className="inv-slot"
-                  data-focus={focus === i ? "1" : "0"}
-                  data-filled={slot ? "1" : "0"}
-                  data-held={held?.kind === "crate" && held.i === i ? "1" : "0"}
-                  draggable={Boolean(slot)}
-                  onDragStart={(e) => {
-                    e.dataTransfer.setData("text/plain", JSON.stringify({ kind: "crate", i }));
-                  }}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    try {
-                      dropOnCrate(i, JSON.parse(e.dataTransfer.getData("text/plain")) as Held);
-                    } catch {
-                      /* ignore */
-                    }
-                  }}
-                >
-                  <SlotFace slot={slot} />
-                </div>
-              ))}
-              </div>
-            </div>
-          ) : (
-          <div className="inv-pane">
-            <h3 className="inv-pane-title">Equipped</h3>
-            <div className="hand-row">
+  const carrying = heldLabel(held);
+  const closeBtn = (extra = false) => (
+    <button
+      type="button"
+      className="start-btn"
+      data-focus={extra ? undefined : focus === closeIdx ? "1" : "0"}
+      onClick={onBack}
+    >
+      {crateMode ? "Close" : "Back"}
+    </button>
+  );
+
+  const packCard = (
+    <div className="start-card options-card inv-card" ref={crateMode ? undefined : cardRef}>
+      <p className="start-kicker">{gameState.playerName || "Player"}</p>
+      <h2 className="options-title">Backpack</h2>
+      <p className="start-copy">
+        {crateMode
+          ? "Your pack. Drag onto the chest, or drop the same item on itself to stack."
+          : "Your pack. Drop the same item on another to stack. A equips pistol, shotgun, or axe."}
+      </p>
+      {!crateMode ? (
+        <div className="inv-pane">
+          <h3 className="inv-pane-title">Equipped</h3>
+          <div className="hand-row">
             {HAND_SLOTS.map((row, i) => {
               const slot = gameState.equipment[row.id];
               return (
@@ -532,8 +624,7 @@ function InventoryPanel({
                   onDrop={(e) => {
                     e.preventDefault();
                     try {
-                      const from = JSON.parse(e.dataTransfer.getData("text/plain")) as Held;
-                      dropOnEq(row.id, from);
+                      dropOnEq(row.id, JSON.parse(e.dataTransfer.getData("text/plain")) as Held);
                     } catch {
                       /* ignore */
                     }
@@ -548,47 +639,47 @@ function InventoryPanel({
                 </div>
               );
             })}
-            </div>
-          </div>
-          )}
-          <div className="inv-pane">
-            <h3 className="inv-pane-title">Backpack</h3>
-            <div className="inv-grid">
-            {gameState.inventory.map((slot, i) => (
-              <div
-                key={i}
-                className="inv-slot"
-                data-focus={focus === (crateMode ? CRATE_SIZE : KIT_COUNT) + i ? "1" : "0"}
-                data-filled={slot ? "1" : "0"}
-                data-held={held?.kind === "inv" && held.i === i ? "1" : "0"}
-                draggable={Boolean(slot)}
-                onDragStart={(e) => {
-                  e.dataTransfer.setData("text/plain", JSON.stringify({ kind: "inv", i }));
-                }}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  try {
-                    const from = JSON.parse(e.dataTransfer.getData("text/plain")) as Held;
-                    dropOnInv(i, from);
-                  } catch {
-                    /* ignore */
-                  }
-                }}
-              >
-                <SlotFace slot={slot} />
-              </div>
-            ))}
-            </div>
           </div>
         </div>
-        <p className="pad-hint">Pad: D-pad moves · A pick up / place / equip · B back</p>
-        <div className="options-actions">
-          <button type="button" className="start-btn" data-focus={focus === (crateMode ? CRATE_SIZE + INV_SIZE : INV_BACK) ? "1" : "0"} onClick={onBack}>
-            Back
-          </button>
+      ) : null}
+      <PackGrid
+        focusBase={crateMode ? CRATE_SIZE : KIT_COUNT}
+        focus={focus}
+        held={held}
+        onDrop={dropOnInv}
+      />
+      <p className="pad-hint">
+        {carrying ? `Holding ${carrying} · A place · B cancel` : "Pad: D-pad moves · A pick up / place · B close"}
+      </p>
+      <div className="options-actions">{closeBtn()}</div>
+    </div>
+  );
+
+  const chestCard = (
+    <div className="start-card options-card inv-card" ref={cardRef}>
+      <p className="start-kicker">Home</p>
+      <h2 className="options-title">Chest</h2>
+      <p className="start-copy">Store items here. Drag to the backpack, or stack same items on each other.</p>
+      <ChestGrid focus={focus} held={held} onDrop={dropOnCrate} />
+      <p className="pad-hint">Close on either screen shuts both.</p>
+      <div className="options-actions">{closeBtn(true)}</div>
+    </div>
+  );
+
+  if (crateMode) {
+    return (
+      <div className="start-overlay options-overlay storage-overlay" onClick={(e) => { if (e.target === e.currentTarget) onBack(); }}>
+        <div className="storage-pair">
+          {chestCard}
+          {packCard}
         </div>
       </div>
+    );
+  }
+
+  return (
+    <div className="start-overlay options-overlay" onClick={(e) => { if (e.target === e.currentTarget) onBack(); }}>
+      {packCard}
     </div>
   );
 }

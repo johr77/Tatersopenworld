@@ -8,8 +8,9 @@ export type Equipment = Record<EquipSlotId, InvSlot>;
 
 export type Hands = "weapon" | "weapon2" | "none";
 
-export const INV_SIZE = 6;
-export const CRATE_SIZE = 6;
+export const INV_SIZE = 12;
+export const CRATE_SIZE = 12;
+export const INV_COLS = 4;
 export const WOOD_PER_TREE = 10;
 
 export const ITEM_LABEL: Record<ItemId, string> = {
@@ -19,6 +20,16 @@ export const ITEM_LABEL: Record<ItemId, string> = {
   pistol: "Pistol",
   shotgun: "Shotgun",
   axe: "Axe",
+};
+
+/** Drop replacements in public/icons using these names (png or svg). */
+export const ITEM_ICON: Record<ItemId, string> = {
+  wood: "/icons/wood.svg",
+  strand: "/icons/strand.svg",
+  stone: "/icons/stone.svg",
+  pistol: "/icons/pistol.svg",
+  shotgun: "/icons/shotgun.svg",
+  axe: "/icons/axe.svg",
 };
 
 export const EQUIP_SLOTS: { id: EquipSlotId; label: string }[] = [

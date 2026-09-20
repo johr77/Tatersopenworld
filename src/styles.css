@@ -564,7 +564,28 @@
 }
 
 .inv-card {
-  width: min(760px, 100%);
+  width: min(420px, 100%);
+}
+
+.storage-overlay {
+  align-items: center;
+  padding: 24px 16px;
+}
+
+.storage-pair {
+  display: flex;
+  gap: 16px;
+  align-items: stretch;
+  justify-content: center;
+  width: min(880px, 100%);
+  pointer-events: none;
+}
+
+.storage-pair .inv-card {
+  pointer-events: auto;
+  flex: 1;
+  min-width: 0;
+  width: auto;
 }
 
 .inv-layout {
@@ -579,9 +600,13 @@
   grid-template-columns: 1fr 1fr;
 }
 
+.inv-pane {
+  margin: 8px 0 10px;
+}
+
 .inv-pane-title {
-  margin: 0 0 8px;
-  font-size: 0.72rem;
+  margin: 0 0 6px;
+  font-size: 0.68rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--color-muted);
@@ -590,7 +615,7 @@
 .hand-row {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
+  gap: 6px;
 }
 
 .kit-col {
@@ -600,16 +625,16 @@
 
 .kit-slot {
   position: relative;
-  min-height: 72px;
+  min-height: 56px;
   border: 1px dashed color-mix(in oklab, var(--color-fg) 28%, transparent);
-  border-radius: 10px;
+  border-radius: 8px;
   background: color-mix(in oklab, var(--color-bg) 45%, transparent);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
-  padding: 14px 6px 6px;
+  gap: 1px;
+  padding: 12px 4px 4px;
 }
 
 .kit-slot-label {
@@ -636,22 +661,22 @@
 
 .inv-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
 }
 
 .inv-slot {
   position: relative;
-  min-height: 92px;
+  min-height: 58px;
   border: 1px solid color-mix(in oklab, var(--color-fg) 16%, transparent);
-  border-radius: 12px;
+  border-radius: 8px;
   background: color-mix(in oklab, var(--color-bg) 55%, transparent);
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  padding: 10px 8px 8px;
+  gap: 2px;
+  padding: 8px 4px 4px;
 }
 
 .inv-slot[data-focus="1"] {
@@ -664,26 +689,36 @@
 
 .inv-count {
   position: absolute;
-  top: 6px;
-  right: 8px;
-  font-size: 0.95rem;
+  top: 3px;
+  right: 5px;
+  font-size: 0.72rem;
   font-weight: 700;
   color: var(--color-fg);
 }
 
-.inv-log {
-  width: 52px;
-  height: 32px;
+.inv-log,
+.inv-icon {
+  width: 36px;
+  height: 22px;
+  object-fit: contain;
+  pointer-events: none;
 }
 
 .inv-name {
-  font-size: 0.75rem;
+  font-size: 0.62rem;
   color: var(--color-muted);
 }
 
 .inv-empty {
-  font-size: 0.75rem;
+  font-size: 0.62rem;
   color: color-mix(in oklab, var(--color-muted) 70%, transparent);
+}
+
+@media (max-width: 760px) {
+  .storage-pair {
+    flex-direction: column;
+    width: min(420px, 100%);
+  }
 }
 
 .options-actions:has(:only-child) {
