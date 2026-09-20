@@ -1051,6 +1051,7 @@ function PieceGlyph({ id }: { id: PieceId }) {
 
 function BuildTray({ nav }: { nav: MenuNav | null }) {
   const seen = useRef(0);
+  const [, setBump] = useState(0);
   const pending = gameState.buildPending;
   const focus = gameState.buildFocus;
   const selected = gameState.buildPiece;
@@ -1060,10 +1061,15 @@ function BuildTray({ nav }: { nav: MenuNav | null }) {
     const n = takeNav(nav, seen);
     if (!n) return;
     if (pending >= 0) {
+      if (n.up || n.left) gameState.buildConfirm = 0;
+      if (n.down || n.right) gameState.buildConfirm = 1;
       if (n.ok) {
-        if (deleteAt(pending)) saveCurrentInventory();
+        if (gameState.buildConfirm === 0) {
+          if (deleteAt(pending)) saveCurrentInventory();
+        } else cancelDelete();
       }
       if (n.back) cancelDelete();
+      setBump((x) => x + 1);
       return;
     }
     if (n.ok) {
@@ -1075,6 +1081,7 @@ function BuildTray({ nav }: { nav: MenuNav | null }) {
   }, [nav, pending, focus]);
 
   if (pending >= 0) {
+    const yes = gameState.buildConfirm === 0;
     return (
       <div className="start-overlay options-overlay" style={{ pointerEvents: "auto" }}>
         <div className="start-card options-card">
@@ -1085,18 +1092,23 @@ function BuildTray({ nav }: { nav: MenuNav | null }) {
             <button
               type="button"
               className="start-btn"
-              data-focus="1"
+              data-focus={yes ? "1" : "0"}
               onClick={() => {
                 if (deleteAt(pending)) saveCurrentInventory();
               }}
             >
               Yes
             </button>
-            <button type="button" className="touch-btn" onClick={() => cancelDelete()}>
+            <button
+              type="button"
+              className="touch-btn"
+              data-focus={yes ? "0" : "1"}
+              onClick={() => cancelDelete()}
+            >
               No
             </button>
           </div>
-          <p className="pad-hint">A yes · B no</p>
+          <p className="pad-hint">D-pad select · A confirm · B back</p>
         </div>
       </div>
     );

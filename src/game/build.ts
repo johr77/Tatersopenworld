@@ -23,7 +23,6 @@ export const TRAY_DELETE = PIECES.length;
 export const TRAY_DONE = PIECES.length + 1;
 export const TRAY_COUNT = PIECES.length + 2;
 
-const _dir = new THREE.Vector3();
 const _ndc = new THREE.Vector2(0, 0);
 const _ray = new THREE.Raycaster();
 const listeners = new Set<() => void>();
@@ -53,7 +52,12 @@ export function setBuildMode(on: boolean) {
   gameState.buildTool = "place";
   gameState.buildPending = -1;
   gameState.buildHover = -1;
-  if (on) gameState.buildFocus = Math.min(gameState.buildFocus, TRAY_COUNT - 1);
+  gameState.buildConfirm = 0;
+  if (on) {
+    gameState.buildFocus = Math.min(gameState.buildFocus, TRAY_COUNT - 1);
+    gameState.buildX = Math.round(gameState.x / GRID) * GRID;
+    gameState.buildZ = Math.round(gameState.z / GRID) * GRID;
+  }
   bump();
 }
 
@@ -88,32 +92,45 @@ export function snapXZ(x: number, z: number) {
   return { x: Math.round(x / GRID) * GRID, z: Math.round(z / GRID) * GRID };
 }
 
-export function aimGround(camera: THREE.Camera) {
-  camera.getWorldDirection(_dir);
-  if (Math.abs(_dir.y) < 0.025) return null;
-  const t = -camera.position.y / _dir.y;
-  if (t < 0.5 || t > 42) return null;
-  return snapXZ(camera.position.x + _dir.x * t, camera.position.z + _dir.z * t);
+export function nudgeCursor(dx: number, dz: number) {
+  if (!dx && !dz) return;
+  gameState.buildX += dx * GRID;
+  gameState.buildZ += dz * GRID;
+  bump();
 }
 
-export function yawAngle() {
-  return (gameState.buildYaw * Math.PI) / 2;
+export function yawAngle(yaw = gameState.buildYaw) {
+  return (yaw * Math.PI) / 2;
 }
 
-function cellOf(x: number, z: number) {
-  return { gx: Math.round(x / GRID), gz: Math.round(z / GRID) };
+export function pieceShift(kind: BuildKind = pieceById().kind, yaw = gameState.buildYaw) {
+  if (kind === "wall" || kind === "wall-doorway-square") {
+    const a = yawAngle(yaw);
+    return { x: Math.cos(a), z: -Math.sin(a) };
+  }
+  return { x: 0, z: 0 };
 }
 
-function occKeys(kind: BuildKind, x: number, z: number): string[] {
-  const { gx, gz } = cellOf(x, z);
-  if (kind === "floor") return [`f:${gx},${gz}`];
-  return [`s:${gx},${gz}`];
+function occKeys(kind: BuildKind, x: number, z: number, rot: number): string[] {
+  if (kind === "floor") {
+    const gx = Math.round(x / GRID);
+    const gz = Math.round(z / GRID);
+    return [`f:${gx},${gz}`];
+  }
+  if (kind === "wall-corner") {
+    const gx = Math.round(x / GRID);
+    const gz = Math.round(z / GRID);
+    return [`e:x:${gx * GRID + GRID / 2}:${gz}`, `e:z:${gz * GRID + GRID / 2}:${gx}`];
+  }
+  const yaw = ((Math.round(rot / (Math.PI / 2)) % 4) + 4) % 4;
+  if (yaw % 2 === 0) return [`e:x:${Math.round(x)}:${Math.round(z / GRID)}`];
+  return [`e:z:${Math.round(z)}:${Math.round(x / GRID)}`];
 }
 
-export function canPlace(kind: BuildKind, x: number, z: number) {
-  const next = occKeys(kind, x, z);
+export function canPlace(kind: BuildKind, x: number, z: number, rot = yawAngle()) {
+  const next = occKeys(kind, x, z, rot);
   for (const b of gameState.buildings) {
-    const have = occKeys(b.kind, b.x, b.z);
+    const have = occKeys(b.kind, b.x, b.z, b.rot);
     if (next.some((k) => have.includes(k))) return false;
   }
   return true;
@@ -121,11 +138,17 @@ export function canPlace(kind: BuildKind, x: number, z: number) {
 
 export function placeAt(x: number, z: number) {
   const def = pieceById();
-  if (!canPlace(def.kind, x, z)) return false;
   const rot = yawAngle();
+  if (!canPlace(def.kind, x, z, rot)) return false;
   gameState.buildings.push({ kind: def.kind, x, z, rot, scale: def.scale });
   bump();
   return true;
+}
+
+export function placeCurrent() {
+  const def = pieceById();
+  const off = pieceShift(def.kind);
+  return placeAt(gameState.buildX + off.x, gameState.buildZ + off.z);
 }
 
 export function deleteAt(index: number) {
@@ -133,6 +156,7 @@ export function deleteAt(index: number) {
   gameState.buildings.splice(index, 1);
   gameState.buildPending = -1;
   gameState.buildHover = -1;
+  gameState.buildConfirm = 0;
   bump();
   return true;
 }
@@ -141,26 +165,29 @@ export function requestDelete(index: number) {
   if (index < 0 || index >= gameState.buildings.length) return;
   gameState.buildPending = index;
   gameState.buildHover = index;
+  gameState.buildConfirm = 0;
   bump();
 }
 
 export function cancelDelete() {
   gameState.buildPending = -1;
+  gameState.buildConfirm = 0;
   bump();
 }
 
-export function ghostPose(camera: THREE.Camera) {
+export function ghostPose() {
   if (gameState.buildTool === "delete") return null;
-  const hit = aimGround(camera);
-  if (!hit) return null;
   const def = pieceById();
+  const off = pieceShift(def.kind);
+  const x = gameState.buildX + off.x;
+  const z = gameState.buildZ + off.z;
   return {
-    x: hit.x,
-    z: hit.z,
+    x,
+    z,
     rot: yawAngle(),
     kind: def.kind,
     scale: def.scale,
-    ok: canPlace(def.kind, hit.x, hit.z),
+    ok: canPlace(def.kind, x, z, yawAngle()),
   };
 }
 
@@ -185,8 +212,8 @@ export function migrateBuildings(raw: BuildPlace[] | undefined): BuildPlace[] {
     .filter((b) => b && kinds.has(b.kind) && Number.isFinite(b.x) && Number.isFinite(b.z))
     .map((b) => ({
       kind: b.kind,
-      x: Math.round(b.x / GRID) * GRID,
-      z: Math.round(b.z / GRID) * GRID,
+      x: b.x,
+      z: b.z,
       rot: Number.isFinite(b.rot) ? b.rot : 0,
       scale: Number.isFinite(b.scale) ? b.scale : 1,
     }));

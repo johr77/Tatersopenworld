@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Clone, Environment, useGLTF } from "@react-three/drei";
-import { useFrame, useThree } from "@react-three/fiber";
+import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import {
   MEGA_TREE_FILES,
@@ -18,7 +18,7 @@ import {
 } from "./world-data";
 import { loadBuild } from "./props";
 import { gameState } from "./state";
-import { ghostPose, PIECES, subscribeBuild } from "./build";
+import { ghostPose, GRID, PIECES, subscribeBuild } from "./build";
 
 for (const file of MEGA_TREE_FILES) useGLTF.preload(`/models/nature/${file}.gltf`);
 useGLTF.preload("/models/nature/Grass_Wispy_Short.gltf");
@@ -318,8 +318,23 @@ function KnockBuild({
   );
 }
 
+function CellMark() {
+  const ref = useRef<THREE.Mesh>(null);
+  useFrame(() => {
+    const m = ref.current;
+    if (!m) return;
+    m.visible = gameState.buildMode;
+    m.position.set(gameState.buildX, 0.04, gameState.buildZ);
+  });
+  return (
+    <mesh ref={ref} rotation={[-Math.PI / 2, 0, 0]} visible={false}>
+      <planeGeometry args={[GRID, GRID]} />
+      <meshBasicMaterial color="#d8d2c4" transparent opacity={0.14} depthWrite={false} />
+    </mesh>
+  );
+}
+
 function GhostBuild() {
-  const camera = useThree((s) => s.camera);
   const def = PIECES.find((p) => p.id === gameState.buildPiece) ?? PIECES[0]!;
   const tpl = useBuildTemplate(def.kind);
   const obj = useMemo(() => {
@@ -353,7 +368,7 @@ function GhostBuild() {
       g.visible = false;
       return;
     }
-    const pose = ghostPose(camera);
+    const pose = ghostPose();
     if (!pose) {
       g.visible = false;
       return;
@@ -425,7 +440,8 @@ function PlayerBuilds() {
       ))}
       {gameState.buildMode ? (
         <>
-          <gridHelper args={[48, 24, "#8a9680", "#3d4a40"]} position={[0, 0.02, 0]} />
+          <gridHelper args={[48, 24, "#8a9680", "#3d4a40"]} position={[1, 0.02, 1]} />
+          <CellMark />
           <GhostBuild key={gameState.buildPiece} />
         </>
       ) : null}

@@ -11,7 +11,7 @@ import { playChop, playEmpty, playGunshot, playImpact, playSwoosh, playTreeFall 
 import { collectStone, collectStrand, collectWood } from "./inventory";
 import { saveCurrentInventory } from "./profiles";
 import { resolveCircle } from "./world-data";
-import { aimGround, bumpBuild, cycleTray, pickBuilding, PIECES, placeAt, requestDelete, rotatePiece, setBuildMode, setPiece, TRAY_DELETE, TRAY_DONE } from "./build";
+import { bumpBuild, cycleTray, nudgeCursor, pickBuilding, PIECES, placeCurrent, requestDelete, rotatePiece, setBuildMode, setPiece, TRAY_DELETE, TRAY_DONE } from "./build";
 import { nearestStash, nearestToolTarget, nearestUseTarget, TREE_CHOP_RANGE, WEED_PICK_RANGE } from "./tools";
 import { attachWeapons, WEAPONS, type WeaponHandle, type WeaponId } from "./weapon";
 import { isFemaleLook, lookDef, LOOKS, type LookId } from "./profiles";
@@ -327,6 +327,7 @@ export function Player() {
   const alignCam = useRef(false);
   const alignDist = useRef(0.7);
   const adsBlend = useRef(0);
+  const buildHold = useRef(0);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -524,27 +525,26 @@ export function Player() {
         if (edges.use) rotatePiece();
         if (edges.crouch) setBuildMode(false);
         const focus = gameState.buildFocus;
+        const deleting = gameState.buildTool === "delete" || focus === TRAY_DELETE;
         if (edges.jump) {
           if (focus === TRAY_DONE) setBuildMode(false);
-          else if (focus === TRAY_DELETE) {
+          else if (deleting) {
             gameState.buildTool = "delete";
             gameState.buildFocus = TRAY_DELETE;
             bumpBuild();
-          } else {
-            const piece = PIECES[focus];
-            if (piece) setPiece(piece.id);
-            const hit = aimGround(camera);
-            if (hit && placeAt(hit.x, hit.z)) saveCurrentInventory();
-          }
-        }
-        if (edges.fire) {
-          if (gameState.buildTool === "delete") {
             const i = pickBuilding(camera, scene);
             if (i >= 0) requestDelete(i);
           } else {
-            const hit = aimGround(camera);
-            if (hit && placeAt(hit.x, hit.z)) saveCurrentInventory();
+            const piece = PIECES[focus];
+            if (piece) setPiece(piece.id);
+            if (placeCurrent()) saveCurrentInventory();
           }
+        }
+        if (edges.fire && mouse.fireHeld) {
+          if (deleting) {
+            const i = pickBuilding(camera, scene);
+            if (i >= 0) requestDelete(i);
+          } else if (placeCurrent()) saveCurrentInventory();
         }
       }
       if (gameState.buildTool === "delete" && gameState.buildPending < 0) {
@@ -635,6 +635,23 @@ export function Player() {
     const ly = Math.sin(lookYaw);
     const lc = Math.cos(lookYaw);
     camFwd.current.set(-ly, 0, -lc);
+
+    if (building && gameState.buildPending < 0) {
+      const mx = actions.moveX;
+      const my = actions.moveY;
+      if (Math.hypot(mx, my) > 0.45) {
+        buildHold.current -= dt;
+        if (buildHold.current <= 0) {
+          const wx = camFwd.current.x * my + lc * mx;
+          const wz = camFwd.current.z * my - ly * mx;
+          if (Math.abs(wx) >= Math.abs(wz)) nudgeCursor(Math.sign(wx), 0);
+          else nudgeCursor(0, Math.sign(wz));
+          buildHold.current = 0.16;
+        }
+      } else {
+        buildHold.current = 0;
+      }
+    }
 
     const wantCrouch = actions.crouch && grounded.current && !building;
     const maxSpeed = wantCrouch
@@ -968,9 +985,11 @@ export function Player() {
     const axeReady = gameState.equipment.tool?.id === "axe";
     const tree = axeReady ? nearestToolTarget(scene, pos.current, fwd.current, "axe", TREE_CHOP_RANGE) : null;
     gameState.prompt = gameState.buildMode
-      ? gameState.buildTool === "delete"
-        ? "Delete · A / click a piece · B exit"
-        : "A place · X rotate · B exit · D-pad tray"
+      ? gameState.buildPending >= 0
+        ? "A yes · B no"
+        : gameState.buildTool === "delete"
+          ? "Look at a piece · A delete · B exit"
+          : "Left stick move piece · A place · X rotate · B exit"
       : stash
       ? "Open chest"
       : pickable?.userData.kind === "stone"
