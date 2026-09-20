@@ -392,7 +392,7 @@ function PlayerBuilds() {
       ))}
       {gameState.buildMode ? (
         <>
-          <gridHelper args={[48, 24, "#8a9680", "#3d4a40"]} position={[0, 0.02, 0]} />
+          <gridHelper args={[48, 48, "#8a9680", "#3d4a40"]} position={[0, 0.02, 0]} />
           <GhostBuild key={gameState.buildPiece} />
         </>
       ) : null}

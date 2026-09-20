@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
 import { MTLLoader } from "three/addons/loaders/MTLLoader.js";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 
 const templates: Partial<Record<string, THREE.Group>> = {};
 const loading: Partial<Record<string, Promise<THREE.Group>>> = {};
@@ -69,6 +70,8 @@ function plant(root: THREE.Object3D) {
   root.updateMatrixWorld(true);
 }
 
+const GLB_PARTS = new Set(["wall", "wall-corner", "wall-doorway-square", "floor"]);
+
 export function loadBuild(name: string): Promise<THREE.Group> {
   if (templates[name]) return Promise.resolve(templates[name]);
   if (loading[name]) return loading[name];
@@ -81,24 +84,33 @@ export function loadBuild(name: string): Promise<THREE.Group> {
       templates[name] = group;
       resolve(group);
     };
-    const mtl = new MTLLoader();
-    mtl.setResourcePath("/models/build/");
-    mtl.load(
-      mtlUrl,
-      (materials) => {
-        materials.preload();
-        const obj = new OBJLoader();
-        obj.setMaterials(materials);
-        obj.load(objUrl, finish, undefined, () => finish(new THREE.Group()));
-      },
-      undefined,
-      () => {
-        const obj = new OBJLoader();
-        obj.load(objUrl, finish, undefined, () => finish(new THREE.Group()));
-      },
-    );
+    const loadObj = () => {
+      const mtl = new MTLLoader();
+      mtl.setResourcePath("/models/build/");
+      mtl.load(
+        mtlUrl,
+        (materials) => {
+          materials.preload();
+          const obj = new OBJLoader();
+          obj.setMaterials(materials);
+          obj.load(objUrl, finish, undefined, () => finish(new THREE.Group()));
+        },
+        undefined,
+        () => {
+          const obj = new OBJLoader();
+          obj.load(objUrl, finish, undefined, () => finish(new THREE.Group()));
+        },
+      );
+    };
+    if (GLB_PARTS.has(name)) {
+      const gltf = new GLTFLoader();
+      gltf.setPath("/models/build/");
+      gltf.load(`${name}.glb`, (asset) => finish(asset.scene), undefined, loadObj);
+    } else {
+      loadObj();
+    }
   });
-  return loading[name];
+  return loading[name]!;
 }
 
 export function loadTreeObj(name: string): Promise<THREE.Group> {

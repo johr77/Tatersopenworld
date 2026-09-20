@@ -12,6 +12,10 @@ export type TreePlace = {
 };
 
 export type BuildKind =
+  | "wall"
+  | "wall-corner"
+  | "wall-doorway-square"
+  | "floor"
   | "Wall_Modular"
   | "Fence_Straight_Modular"
   | "Fence_90_Modular"

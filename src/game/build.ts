@@ -12,13 +12,13 @@ export type PieceDef = {
 };
 
 export const PIECES: PieceDef[] = [
-  { id: "wall", label: "Wall", kind: "Wall_Modular", scale: 1 },
-  { id: "door", label: "Door", kind: "Arch", scale: 0.5 },
-  { id: "floor", label: "Floor", kind: "Floor_Modular", scale: 1 },
-  { id: "corner", label: "Corner", kind: "Fence_90_Modular", scale: 1 },
+  { id: "wall", label: "Wall", kind: "wall", scale: 1 },
+  { id: "door", label: "Door", kind: "wall-doorway-square", scale: 1 },
+  { id: "floor", label: "Floor", kind: "floor", scale: 1 },
+  { id: "corner", label: "Corner", kind: "wall-corner", scale: 1 },
 ];
 
-export const GRID = 2;
+export const GRID = 1;
 
 const _dir = new THREE.Vector3();
 const listeners = new Set<() => void>();
