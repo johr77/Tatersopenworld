@@ -19,7 +19,7 @@ export const ITEM_LABEL: Record<ItemId, string> = {
   stone: "Stone",
   pistol: "Pistol",
   shotgun: "Shotgun",
-  axe: "Axe",
+  axe: "Primitive Axe",
 };
 
 /** Drop replacements in public/icons using these names (png or svg). */
