@@ -109,21 +109,25 @@ export function yawIndex(rot: number) {
 }
 
 export function pieceShift(kind: BuildKind = pieceById().kind, yaw = gameState.buildYaw) {
-  let inset = 0;
-  if (kind === "wall") inset = 0.95;
-  else if (kind === "wall-doorway-square") inset = 0.9;
-  else return { x: 0, z: 0 };
-  const a = yawAngle(yaw);
-  return { x: Math.cos(a) * inset, z: -Math.sin(a) * inset };
+  if (kind === "wall" || kind === "wall-doorway-square") {
+    const a = yawAngle(yaw);
+    return { x: Math.cos(a) * 0.95, z: -Math.sin(a) * 0.95 };
+  }
+  return { x: 0, z: 0 };
 }
 
 export function pieceY(kind: BuildKind) {
   return kind === "floor" ? 0 : 0.1;
 }
 
+export function pieceScale(kind: BuildKind): [number, number, number] {
+  if (kind === "wall-doorway-square") return [0.5, 1, 1];
+  return [1, 1, 1];
+}
+
 export function placedPose(place: { kind: BuildKind; x: number; z: number; rot: number }) {
   const off = pieceShift(place.kind, yawIndex(place.rot));
-  return { x: place.x + off.x, y: pieceY(place.kind), z: place.z + off.z };
+  return { x: place.x + off.x, y: pieceY(place.kind), z: place.z + off.z, scale: pieceScale(place.kind) };
 }
 
 function cornerEdges(gx: number, gz: number, yaw: number) {

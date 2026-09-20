@@ -18,7 +18,7 @@ import {
 } from "./world-data";
 import { loadBuild } from "./props";
 import { gameState } from "./state";
-import { ghostPose, GRID, PIECES, placedPose, subscribeBuild } from "./build";
+import { ghostPose, GRID, PIECES, pieceScale, placedPose, subscribeBuild } from "./build";
 
 for (const file of MEGA_TREE_FILES) useGLTF.preload(`/models/nature/${file}.gltf`);
 useGLTF.preload("/models/nature/Grass_Wispy_Short.gltf");
@@ -376,7 +376,7 @@ function GhostBuild() {
     g.visible = true;
     g.position.set(pose.x, pose.y, pose.z);
     g.rotation.y = pose.rot;
-    g.scale.setScalar(pose.scale);
+    g.scale.set(...pieceScale(pose.kind));
     g.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh) return;
@@ -421,7 +421,7 @@ function PlacedBuild({ place, index }: { place: BuildPlace; index: number }) {
   if (!obj) return null;
   const pose = placedPose(place);
   return (
-    <group ref={ref} position={[pose.x, pose.y, pose.z]} rotation={[0, place.rot, 0]} scale={place.scale} userData={{ buildIndex: index }}>
+    <group ref={ref} position={[pose.x, pose.y, pose.z]} rotation={[0, place.rot, 0]} scale={pose.scale} userData={{ buildIndex: index }}>
       <primitive object={obj} />
     </group>
   );
