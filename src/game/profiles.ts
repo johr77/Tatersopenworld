@@ -10,6 +10,8 @@ import {
 } from "./inventory";
 import { gameState } from "./state";
 import { emptyLoadout, migrateLoadout, type Loadout } from "./wardrobe";
+import { migrateBuildings } from "./build";
+import type { BuildPlace } from "./world-data";
 
 export type LookId = "hero-male" | "hero-female" | "mannequin" | "female";
 
@@ -21,6 +23,7 @@ export type PlayerProfile = {
   inventory: InvSlot[];
   equipment: Equipment;
   crate: InvSlot[];
+  buildings: BuildPlace[];
   created: number;
 };
 
@@ -69,6 +72,7 @@ export function loadPlayers(): PlayerProfile[] {
         inventory: migrateInventory(p.inventory),
         equipment: migrateEquipment((p as PlayerProfile).equipment),
         crate: migrateCrate((p as PlayerProfile).crate),
+        buildings: migrateBuildings((p as PlayerProfile).buildings),
       }));
   } catch {
     return [];
@@ -98,6 +102,7 @@ export function saveCurrentInventory() {
           inventory: gameState.inventory.map((s) => (s ? { ...s } : null)),
           equipment: { ...gameState.equipment },
           crate: gameState.crate.map((s) => (s ? { ...s } : null)),
+          buildings: gameState.buildings.map((b) => ({ ...b })),
         }
       : p,
   );

@@ -1,6 +1,7 @@
 import type { LookId } from "./profiles";
 import { emptyCrate, emptyEquipment, emptyInventory, type Equipment, type Hands, type InvSlot } from "./inventory";
 import { emptyLoadout, type Loadout } from "./wardrobe";
+import type { BuildPlace } from "./world-data";
 
 export type ViewMode = "fps" | "third";
 
@@ -15,6 +16,11 @@ export const gameState = {
   equipment: emptyEquipment() as Equipment,
   crate: emptyCrate() as InvSlot[],
   crateOpen: false,
+  buildMode: false,
+  buildPiece: "wall" as "wall" | "door" | "floor" | "corner",
+  buildYaw: 0,
+  buildings: [] as BuildPlace[],
+  buildRev: 0,
   hands: "none" as Hands,
   playerId: "",
   playerName: "",

@@ -58,6 +58,7 @@ import {
   type InvSlot,
 } from "./inventory";
 import { emptyLoadout } from "./wardrobe";
+import { PIECES, migrateBuildings, setBuildMode, setPiece, type PieceId } from "./build";
 
 function takeNav(nav: MenuNav | null, seen: { current: number }): MenuNav | null {
   if (!nav || nav.seq === 0 || nav.seq === seen.current) return null;
@@ -899,11 +900,13 @@ function OptionsPanel({
   onClose,
   onQuit,
   onSave,
+  onBuild,
   nav,
 }: {
   onClose: () => void;
   onQuit?: () => void;
   onSave?: () => void;
+  onBuild?: () => void;
   nav: MenuNav | null;
 }) {
   const [pane, setPane] = useState<"root" | "controls" | "inventory" | "quit">("root");
@@ -913,7 +916,7 @@ function OptionsPanel({
   const opened = useRef(performance.now());
   const focusRef = useRef(0);
   focusRef.current = focus;
-  const items = onQuit ? 4 : 3;
+  const items = onQuit ? 5 : 3;
 
   const saveNow = () => {
     onSave?.();
@@ -943,15 +946,16 @@ function OptionsPanel({
     if (n.ok) {
       const at = focusRef.current;
       if (at === 0) setPane("inventory");
-      else if (at === 1) setPane("controls");
-      else if (onQuit && at === 2) saveNow();
-      else if (onQuit && at === 3) {
+      else if (onQuit && at === 1) onBuild?.();
+      else if (at === (onQuit ? 2 : 1)) setPane("controls");
+      else if (onQuit && at === 3) saveNow();
+      else if (onQuit && at === 4) {
         setFocus(0);
         setPane("quit");
       } else onClose();
     }
     if (n.back || n.menu) onClose();
-  }, [nav, pane, items, onClose, onQuit]);
+  }, [nav, pane, items, onClose, onQuit, onBuild]);
 
   if (pane === "inventory") return <InventoryPanel nav={nav} onBack={() => setPane("root")} />;
   if (pane === "controls") return <ControlsHub nav={nav} onBack={() => setPane("root")} onClose={onClose} />;
@@ -985,15 +989,20 @@ function OptionsPanel({
           <button type="button" className="start-btn" data-focus={focus === 0 ? "1" : "0"} onClick={() => setPane("inventory")}>
             Inventory
           </button>
-          <button type="button" className="touch-btn" data-focus={focus === 1 ? "1" : "0"} onClick={() => setPane("controls")}>
+          {onQuit ? (
+            <button type="button" className="touch-btn" data-focus={focus === 1 ? "1" : "0"} onClick={() => onBuild?.()}>
+              Build mode
+            </button>
+          ) : null}
+          <button type="button" className="touch-btn" data-focus={focus === (onQuit ? 2 : 1) ? "1" : "0"} onClick={() => setPane("controls")}>
             Controls
           </button>
           {onQuit ? (
             <>
-              <button type="button" className="touch-btn" data-focus={focus === 2 ? "1" : "0"} onClick={saveNow}>
+              <button type="button" className="touch-btn" data-focus={focus === 3 ? "1" : "0"} onClick={saveNow}>
                 Save
               </button>
-              <button type="button" className="touch-btn" data-focus={focus === 3 ? "1" : "0"} onClick={() => { setFocus(0); setPane("quit"); }}>
+              <button type="button" className="touch-btn" data-focus={focus === 4 ? "1" : "0"} onClick={() => { setFocus(0); setPane("quit"); }}>
                 Quit
               </button>
             </>
@@ -1004,6 +1013,67 @@ function OptionsPanel({
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function PieceGlyph({ id }: { id: PieceId }) {
+  if (id === "door") {
+    return (
+      <svg className="build-glyph" viewBox="0 0 48 32" aria-hidden="true">
+        <path d="M8 30 V12 Q24 2 40 12 V30" fill="none" stroke="currentColor" strokeWidth="2.4" />
+        <rect x="20" y="16" width="8" height="14" fill="currentColor" opacity="0.7" />
+      </svg>
+    );
+  }
+  if (id === "floor") {
+    return (
+      <svg className="build-glyph" viewBox="0 0 48 32" aria-hidden="true">
+        <rect x="6" y="10" width="36" height="14" rx="2" fill="none" stroke="currentColor" strokeWidth="2.2" />
+        <path d="M6 17 H42 M18 10 V24 M30 10 V24" stroke="currentColor" strokeWidth="1.2" opacity="0.7" />
+      </svg>
+    );
+  }
+  if (id === "corner") {
+    return (
+      <svg className="build-glyph" viewBox="0 0 48 32" aria-hidden="true">
+        <path d="M10 8 V24 H38" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="square" />
+      </svg>
+    );
+  }
+  return (
+    <svg className="build-glyph" viewBox="0 0 48 32" aria-hidden="true">
+      <rect x="8" y="8" width="32" height="16" fill="none" stroke="currentColor" strokeWidth="2.4" />
+      <path d="M8 16 H40" stroke="currentColor" strokeWidth="1.4" />
+    </svg>
+  );
+}
+
+function BuildTray() {
+  const selected = gameState.buildPiece;
+  return (
+    <div className="build-tray">
+      <div className="build-tray-pieces">
+        {PIECES.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            className="build-piece"
+            data-on={selected === p.id ? "1" : "0"}
+            onClick={() => setPiece(p.id)}
+          >
+            <PieceGlyph id={p.id} />
+            <span>{p.label}</span>
+          </button>
+        ))}
+      </div>
+      <button
+        type="button"
+        className="build-done"
+        onClick={() => setBuildMode(false)}
+      >
+        Done
+      </button>
     </div>
   );
 }
@@ -1360,6 +1430,8 @@ export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | nul
     gameState.equipment = eq;
     gameState.crate = crate;
     gameState.crateOpen = false;
+    gameState.buildings = migrateBuildings(fresh.buildings);
+    setBuildMode(false);
     gameState.hands = syncHands(eq, "none");
     gameState.setup = false;
     setPlayers(loadPlayers());
@@ -1388,6 +1460,7 @@ export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | nul
         inventory: inv,
         equipment: emptyEquipment(),
         crate: emptyCrate(),
+        buildings: [],
         created: Date.now(),
       },
     ];
@@ -1417,6 +1490,7 @@ export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | nul
     gameState.playing = false;
     gameState.setup = false;
     gameState.crateOpen = false;
+    setBuildMode(false);
     setMenu(false);
     setScreen("roster");
     setFocus(0);
@@ -1530,6 +1604,14 @@ export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | nul
           onClose={playing ? closeMenu : () => setMenu(false)}
           onQuit={playing ? toRoster : undefined}
           onSave={playing ? persist : undefined}
+          onBuild={
+            playing
+              ? () => {
+                  setBuildMode(true);
+                  closeMenu();
+                }
+              : undefined
+          }
           nav={nav}
         />
       )}
@@ -1570,6 +1652,7 @@ export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | nul
               </button>
             </div>
           </div>
+          {gameState.buildMode ? <BuildTray /> : null}
           <div className="hud-bottom">
             <div className="hud-chip">
               <span className="hud-label">Stance</span>

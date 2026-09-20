@@ -11,6 +11,7 @@ import { playChop, playEmpty, playGunshot, playImpact, playSwoosh, playTreeFall 
 import { collectStone, collectStrand, collectWood } from "./inventory";
 import { saveCurrentInventory } from "./profiles";
 import { resolveCircle } from "./world-data";
+import { aimGround, cyclePiece, placeAt, rotatePiece } from "./build";
 import { nearestStash, nearestToolTarget, nearestUseTarget, TREE_CHOP_RANGE, WEED_PICK_RANGE } from "./tools";
 import { attachWeapons, WEAPONS, type WeaponHandle, type WeaponId } from "./weapon";
 import { isFemaleLook, lookDef, LOOKS, type LookId } from "./profiles";
@@ -502,7 +503,7 @@ export function Player() {
     else adsBlend.current = 0;
     if (actions.weaponSlot === 0 && gameState.equipment.weapon) gameState.hands = "weapon";
     if (actions.weaponSlot === 1 && gameState.equipment.weapon2) gameState.hands = "weapon2";
-    if (edges.nextWeapon || edges.prevWeapon) {
+    if (!gameState.buildMode && (edges.nextWeapon || edges.prevWeapon)) {
       const guns: Array<"weapon" | "weapon2"> = [];
       if (gameState.equipment.weapon) guns.push("weapon");
       if (gameState.equipment.weapon2) guns.push("weapon2");
@@ -513,6 +514,15 @@ export function Player() {
       }
     }
     const held = heldWeaponId();
+    if (gameState.buildMode) {
+      if (edges.nextWeapon) cyclePiece(1);
+      if (edges.prevWeapon) cyclePiece(-1);
+      if (edges.use || edges.reload) rotatePiece();
+      if (edges.fire) {
+        const hit = aimGround(camera);
+        if (hit && placeAt(hit.x, hit.z)) saveCurrentInventory();
+      }
+    }
     if (held !== lastHeld.current) {
       lastHeld.current = held;
       if (chopHold.current <= 0) weapons.current?.setId(held);
@@ -668,11 +678,11 @@ export function Player() {
         reserve.current -= take;
       }
     }
-    if (edges.reload && def && !def.melee && reloadT.current <= 0 && ammo.current < def.mag && reserve.current > 0) {
+    if (edges.reload && !gameState.buildMode && def && !def.melee && reloadT.current <= 0 && ammo.current < def.mag && reserve.current > 0) {
       reloadT.current = def.reload;
       controller.upper.play(CLIP.reload, 0.08);
     }
-    if (edges.fire && reloadT.current <= 0) {
+    if (edges.fire && !gameState.buildMode && reloadT.current <= 0) {
       if (!def || def.melee) {
         playEmpty();
       } else if (ammo.current <= 0) playEmpty();
@@ -921,7 +931,9 @@ export function Player() {
     const pickable = nearestUseTarget(scene, pos.current, fwd.current, WEED_PICK_RANGE);
     const axeReady = gameState.equipment.tool?.id === "axe";
     const tree = axeReady ? nearestToolTarget(scene, pos.current, fwd.current, "axe", TREE_CHOP_RANGE) : null;
-    gameState.prompt = stash
+    gameState.prompt = gameState.buildMode
+      ? "Place · click / RT · Rotate E / X · LB/RB piece"
+      : stash
       ? "Open chest"
       : pickable?.userData.kind === "stone"
         ? "Pick stone"
@@ -931,7 +943,7 @@ export function Player() {
             ? "Chop"
             : "";
     const busy = pickHold.current > 0 || chopHold.current > 0;
-    if (edges.use && !busy) {
+    if (edges.use && !busy && !gameState.buildMode) {
       if (stash) {
         stash.userData.use();
       } else if (pickable) {

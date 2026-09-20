@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Clone, Environment, useGLTF } from "@react-three/drei";
-import { useFrame } from "@react-three/fiber";
+import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import {
   MEGA_TREE_FILES,
@@ -13,10 +13,12 @@ import {
   WEEDS,
   markFallen,
   type BuildKind,
+  type BuildPlace,
   type TreePlace,
 } from "./world-data";
 import { loadBuild } from "./props";
 import { gameState } from "./state";
+import { ghostPose, PIECES, subscribeBuild } from "./build";
 
 for (const file of MEGA_TREE_FILES) useGLTF.preload(`/models/nature/${file}.gltf`);
 useGLTF.preload("/models/nature/Grass_Wispy_Short.gltf");
@@ -316,6 +318,88 @@ function KnockBuild({
   );
 }
 
+function GhostBuild() {
+  const camera = useThree((s) => s.camera);
+  const def = PIECES.find((p) => p.id === gameState.buildPiece) ?? PIECES[0]!;
+  const tpl = useBuildTemplate(def.kind);
+  const obj = useMemo(() => {
+    if (!tpl) return null;
+    const c = tpl.clone(true);
+    c.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      mesh.raycast = () => {};
+      mesh.castShadow = false;
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      const next = mats.map((raw) => {
+        const src = raw as THREE.MeshStandardMaterial;
+        const mat = src.clone();
+        mat.transparent = true;
+        mat.opacity = 0.4;
+        mat.depthWrite = false;
+        mat.emissive = new THREE.Color("#c8c4b8");
+        mat.emissiveIntensity = 0.22;
+        return mat;
+      });
+      mesh.material = next.length === 1 ? next[0]! : next;
+    });
+    return c;
+  }, [tpl]);
+  const ref = useRef<THREE.Group>(null);
+  useFrame(() => {
+    const g = ref.current;
+    if (!g) return;
+    if (!gameState.buildMode) {
+      g.visible = false;
+      return;
+    }
+    const pose = ghostPose(camera);
+    if (!pose) {
+      g.visible = false;
+      return;
+    }
+    g.visible = true;
+    g.position.set(pose.x, 0, pose.z);
+    g.rotation.y = pose.rot;
+    g.scale.setScalar(pose.scale);
+  });
+  if (!obj) return null;
+  return (
+    <group ref={ref} visible={false}>
+      <primitive object={obj} />
+    </group>
+  );
+}
+
+function PlacedBuild({ place }: { place: BuildPlace }) {
+  const tpl = useBuildTemplate(place.kind);
+  const obj = useMemo(() => (tpl ? tpl.clone(true) : null), [tpl]);
+  if (!obj) return null;
+  return <primitive object={obj} position={[place.x, 0, place.z]} rotation={[0, place.rot, 0]} scale={place.scale} />;
+}
+
+function PlayerBuilds() {
+  const [rev, setRev] = useState(0);
+  useEffect(() => subscribeBuild(() => setRev((n) => n + 1)), []);
+  useEffect(() => {
+    for (const p of PIECES) loadBuild(p.kind);
+  }, []);
+  void rev;
+  return (
+    <group>
+      {gameState.buildings.map((b, i) => (
+        <PlacedBuild key={`${b.kind}-${b.x}-${b.z}-${b.rot}-${i}`} place={b} />
+      ))}
+      {gameState.buildMode ? (
+        <>
+          <gridHelper args={[48, 24, "#8a9680", "#3d4a40"]} position={[0, 0.02, 0]} />
+          <GhostBuild key={gameState.buildPiece} />
+        </>
+      ) : null}
+    </group>
+  );
+}
+
 function KnockCan({ x, z, id }: { x: number; z: number; id: number }) {
   return (
     <KnockGroup id={id} position={[x, 0, z]} axis="z">
@@ -383,6 +467,7 @@ export function World() {
       ))}
       <StorageCrate />
       <RangeTargets />
+      <PlayerBuilds />
     </>
   );
 }
