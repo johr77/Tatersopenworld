@@ -362,6 +362,18 @@ function GhostBuild() {
     g.position.set(pose.x, 0, pose.z);
     g.rotation.y = pose.rot;
     g.scale.setScalar(pose.scale);
+    g.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      for (const raw of mats) {
+        const mat = raw as THREE.MeshStandardMaterial;
+        if (!mat) continue;
+        mat.emissive = new THREE.Color(pose.ok ? "#c8c4b8" : "#8a4040");
+        mat.emissiveIntensity = pose.ok ? 0.22 : 0.45;
+        mat.opacity = pose.ok ? 0.4 : 0.55;
+      }
+    });
   });
   if (!obj) return null;
   return (
@@ -371,11 +383,32 @@ function GhostBuild() {
   );
 }
 
-function PlacedBuild({ place }: { place: BuildPlace }) {
+function PlacedBuild({ place, index }: { place: BuildPlace; index: number }) {
   const tpl = useBuildTemplate(place.kind);
   const obj = useMemo(() => (tpl ? tpl.clone(true) : null), [tpl]);
+  const ref = useRef<THREE.Group>(null);
+  useFrame(() => {
+    const lit = gameState.buildHover === index || gameState.buildPending === index;
+    const root = ref.current;
+    if (!root) return;
+    root.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      for (const raw of mats) {
+        const mat = raw as THREE.MeshStandardMaterial;
+        if (!mat?.emissive) continue;
+        mat.emissive.set(lit ? "#d8d2c4" : "#000000");
+        mat.emissiveIntensity = lit ? 0.5 : 0;
+      }
+    });
+  });
   if (!obj) return null;
-  return <primitive object={obj} position={[place.x, 0, place.z]} rotation={[0, place.rot, 0]} scale={place.scale} />;
+  return (
+    <group ref={ref} position={[place.x, 0, place.z]} rotation={[0, place.rot, 0]} scale={place.scale} userData={{ buildIndex: index }}>
+      <primitive object={obj} />
+    </group>
+  );
 }
 
 function PlayerBuilds() {
@@ -388,11 +421,11 @@ function PlayerBuilds() {
   return (
     <group>
       {gameState.buildings.map((b, i) => (
-        <PlacedBuild key={`${b.kind}-${b.x}-${b.z}-${b.rot}-${i}`} place={b} />
+        <PlacedBuild key={`${b.kind}-${b.x}-${b.z}-${b.rot}-${i}`} place={b} index={i} />
       ))}
       {gameState.buildMode ? (
         <>
-          <gridHelper args={[48, 48, "#8a9680", "#3d4a40"]} position={[0, 0.02, 0]} />
+          <gridHelper args={[48, 24, "#8a9680", "#3d4a40"]} position={[0, 0.02, 0]} />
           <GhostBuild key={gameState.buildPiece} />
         </>
       ) : null}

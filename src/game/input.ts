@@ -450,6 +450,7 @@ const prev = {
   use: false,
   nextWeapon: false,
   prevWeapon: false,
+  crouch: false,
 };
 
 export const edges = {
@@ -462,6 +463,7 @@ export const edges = {
   use: false,
   nextWeapon: false,
   prevWeapon: false,
+  crouch: false,
 };
 
 export function sampleActions(): Actions {
@@ -520,6 +522,7 @@ export function sampleActions(): Actions {
   padState.stickY = lookY;
 
   const jump = !blocked && actionDown("jump", pad);
+  const crouchHeld = !blocked && actionDown("crouch", pad);
   const fire = !blocked && (mouse.fireHeld || actionDown("fire", pad));
   const aim = !blocked && (mouse.aimHeld || actionDown("aim", pad));
   const reload = !blocked && actionDown("reload", pad);
@@ -548,6 +551,7 @@ export function sampleActions(): Actions {
   edges.use = use && !prev.use;
   edges.nextWeapon = nextHeld && !prev.nextWeapon;
   edges.prevWeapon = prevHeld && !prev.prevWeapon;
+  edges.crouch = crouchHeld && !prev.crouch;
   prev.jump = jump;
   prev.fire = fire;
   prev.reload = reload;
@@ -557,12 +561,13 @@ export function sampleActions(): Actions {
   prev.use = use;
   prev.nextWeapon = nextHeld;
   prev.prevWeapon = prevHeld;
+  prev.crouch = crouchHeld;
 
   return {
     moveX: blocked ? 0 : x,
     moveY: blocked ? 0 : y,
     jump,
-    crouch: !blocked && actionDown("crouch", pad),
+    crouch: crouchHeld,
     sprint: !blocked && actionDown("sprint", pad),
     fire,
     aim,

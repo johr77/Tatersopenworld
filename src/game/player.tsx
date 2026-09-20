@@ -11,7 +11,7 @@ import { playChop, playEmpty, playGunshot, playImpact, playSwoosh, playTreeFall 
 import { collectStone, collectStrand, collectWood } from "./inventory";
 import { saveCurrentInventory } from "./profiles";
 import { resolveCircle } from "./world-data";
-import { aimGround, cyclePiece, placeAt, rotatePiece } from "./build";
+import { aimGround, bumpBuild, cycleTray, pickBuilding, PIECES, placeAt, requestDelete, rotatePiece, setBuildMode, setPiece, TRAY_DELETE, TRAY_DONE } from "./build";
 import { nearestStash, nearestToolTarget, nearestUseTarget, TREE_CHOP_RANGE, WEED_PICK_RANGE } from "./tools";
 import { attachWeapons, WEAPONS, type WeaponHandle, type WeaponId } from "./weapon";
 import { isFemaleLook, lookDef, LOOKS, type LookId } from "./profiles";
@@ -486,8 +486,8 @@ export function Player() {
   useFrame((state, dtRaw) => {
     const dt = Math.min(dtRaw, 0.05);
     const actions = sampleActions();
-    if (edges.toggleView) view.current = view.current === "fps" ? "third" : "fps";
-    if (edges.alignCam) {
+    if (edges.toggleView && !gameState.buildMode) view.current = view.current === "fps" ? "third" : "fps";
+    if (edges.alignCam && !gameState.buildMode) {
       alignCam.current = !alignCam.current;
       if (alignCam.current) {
         view.current = "third";
@@ -514,14 +514,43 @@ export function Player() {
       }
     }
     const held = heldWeaponId();
-    if (gameState.buildMode) {
-      if (edges.nextWeapon) cyclePiece(1);
-      if (edges.prevWeapon) cyclePiece(-1);
-      if (edges.use || edges.reload) rotatePiece();
-      if (edges.fire) {
-        const hit = aimGround(camera);
-        if (hit && placeAt(hit.x, hit.z)) saveCurrentInventory();
+    const building = gameState.buildMode;
+    if (building) {
+      view.current = "third";
+      alignCam.current = false;
+      if (gameState.buildPending < 0) {
+        if (edges.nextWeapon) cycleTray(1);
+        if (edges.prevWeapon) cycleTray(-1);
+        if (edges.use) rotatePiece();
+        if (edges.crouch) setBuildMode(false);
+        const focus = gameState.buildFocus;
+        if (edges.jump) {
+          if (focus === TRAY_DONE) setBuildMode(false);
+          else if (focus === TRAY_DELETE) {
+            gameState.buildTool = "delete";
+            gameState.buildFocus = TRAY_DELETE;
+            bumpBuild();
+          } else {
+            const piece = PIECES[focus];
+            if (piece) setPiece(piece.id);
+            const hit = aimGround(camera);
+            if (hit && placeAt(hit.x, hit.z)) saveCurrentInventory();
+          }
+        }
+        if (edges.fire) {
+          if (gameState.buildTool === "delete") {
+            const i = pickBuilding(camera, scene);
+            if (i >= 0) requestDelete(i);
+          } else {
+            const hit = aimGround(camera);
+            if (hit && placeAt(hit.x, hit.z)) saveCurrentInventory();
+          }
+        }
       }
+      if (gameState.buildTool === "delete" && gameState.buildPending < 0) {
+        gameState.buildHover = pickBuilding(camera, scene);
+      } else if (gameState.buildPending >= 0) gameState.buildHover = gameState.buildPending;
+      else gameState.buildHover = -1;
     }
     if (held !== lastHeld.current) {
       lastHeld.current = held;
@@ -538,13 +567,20 @@ export function Player() {
 
     const lookDelta = consumeLook();
     const third = view.current === "third";
-    const aiming = actions.aim;
+    const aiming = actions.aim && !building;
     const mouseSens = SENS * settings.mouseSens * (aiming ? 0.55 : 1);
     const stickRate = 2.35 * settings.stickSens;
     const stickHeld = Math.hypot(actions.lookStickX, actions.lookStickY) > 0.12;
     const inspecting = alignCam.current;
 
-    if (inspecting) {
+    if (building) {
+      if (mouse.locked) {
+        orbitYaw.current -= lookDelta.dx * mouseSens;
+        orbitPitch.current -= lookDelta.dy * mouseSens;
+      }
+      orbitYaw.current -= actions.lookStickX * stickRate * dt;
+      orbitPitch.current -= actions.lookStickY * 1.9 * settings.stickSens * dt;
+    } else if (inspecting) {
       if (mouse.locked) {
         orbitYaw.current -= lookDelta.dx * mouseSens * 1.7;
         orbitPitch.current -= lookDelta.dy * mouseSens * 1.7;
@@ -570,12 +606,12 @@ export function Player() {
       orbitPitch.current = THREE.MathUtils.damp(orbitPitch.current, 0, 12, dt);
     }
 
-    if (stickHeld) stickLookLatch.current = true;
+    if (stickHeld && !building) stickLookLatch.current = true;
     if (aiming) {
       wasAiming.current = true;
       stickLookLatch.current = false;
     }
-    if (third && !aiming && !inspecting && !stickHeld && (stickLookLatch.current || wasAiming.current)) {
+    if (third && !aiming && !inspecting && !building && !stickHeld && (stickLookLatch.current || wasAiming.current)) {
       pitch.current = THREE.MathUtils.damp(pitch.current, 0, 8, dt);
       if (Math.abs(pitch.current) < 0.025) {
         pitch.current = 0;
@@ -600,7 +636,7 @@ export function Player() {
     const lc = Math.cos(lookYaw);
     camFwd.current.set(-ly, 0, -lc);
 
-    const wantCrouch = actions.crouch && grounded.current;
+    const wantCrouch = actions.crouch && grounded.current && !building;
     const maxSpeed = wantCrouch
       ? CROUCH_SPEED
       : actions.sprint && actions.moveY > 0
@@ -608,10 +644,10 @@ export function Player() {
         : WALK_SPEED;
 
     wish.current.copy(fwd.current).multiplyScalar(actions.moveY).addScaledVector(right.current, actions.moveX);
-    if (inspecting || pickHold.current > 0 || chopHold.current > 0) wish.current.set(0, 0, 0);
+    if (inspecting || building || pickHold.current > 0 || chopHold.current > 0) wish.current.set(0, 0, 0);
     if (wish.current.lengthSq() > 1) wish.current.normalize();
 
-    if (inspecting || pickHold.current > 0 || chopHold.current > 0) {
+    if (inspecting || building || pickHold.current > 0 || chopHold.current > 0) {
       vel.current.x = 0;
       vel.current.z = 0;
     }
@@ -630,7 +666,7 @@ export function Player() {
       vel.current.z *= maxSpeed / sp;
     }
 
-    if (edges.jump && !inspecting && pickHold.current <= 0 && chopHold.current <= 0) jumpBuf.current = 0.12;
+    if (edges.jump && !building && !inspecting && pickHold.current <= 0 && chopHold.current <= 0) jumpBuf.current = 0.12;
     else jumpBuf.current = Math.max(0, jumpBuf.current - dt);
     if (grounded.current) coyote.current = 0.12;
     else coyote.current = Math.max(0, coyote.current - dt);
@@ -932,7 +968,9 @@ export function Player() {
     const axeReady = gameState.equipment.tool?.id === "axe";
     const tree = axeReady ? nearestToolTarget(scene, pos.current, fwd.current, "axe", TREE_CHOP_RANGE) : null;
     gameState.prompt = gameState.buildMode
-      ? "Place · click / RT · Rotate E / X · LB/RB piece"
+      ? gameState.buildTool === "delete"
+        ? "Delete · A / click a piece · B exit"
+        : "A place · X rotate · B exit · D-pad tray"
       : stash
       ? "Open chest"
       : pickable?.userData.kind === "stone"

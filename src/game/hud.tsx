@@ -58,7 +58,7 @@ import {
   type InvSlot,
 } from "./inventory";
 import { emptyLoadout } from "./wardrobe";
-import { PIECES, migrateBuildings, setBuildMode, setPiece, type PieceId } from "./build";
+import { PIECES, TRAY_DELETE, TRAY_DONE, cancelDelete, deleteAt, migrateBuildings, setBuildMode, setPiece, setTrayFocus, type PieceId } from "./build";
 
 function takeNav(nav: MenuNav | null, seen: { current: number }): MenuNav | null {
   if (!nav || nav.seq === 0 || nav.seq === seen.current) return null;
@@ -1049,31 +1049,97 @@ function PieceGlyph({ id }: { id: PieceId }) {
   );
 }
 
-function BuildTray() {
+function BuildTray({ nav }: { nav: MenuNav | null }) {
+  const seen = useRef(0);
+  const pending = gameState.buildPending;
+  const focus = gameState.buildFocus;
   const selected = gameState.buildPiece;
+  const deleting = gameState.buildTool === "delete";
+
+  useEffect(() => {
+    const n = takeNav(nav, seen);
+    if (!n) return;
+    if (pending >= 0) {
+      if (n.ok) {
+        if (deleteAt(pending)) saveCurrentInventory();
+      }
+      if (n.back) cancelDelete();
+      return;
+    }
+    if (n.ok) {
+      if (focus === TRAY_DONE) setBuildMode(false);
+      else if (focus === TRAY_DELETE) setTrayFocus(TRAY_DELETE);
+      else setPiece(PIECES[focus]?.id ?? "wall");
+    }
+    if (n.back) setBuildMode(false);
+  }, [nav, pending, focus]);
+
+  if (pending >= 0) {
+    return (
+      <div className="start-overlay options-overlay" style={{ pointerEvents: "auto" }}>
+        <div className="start-card options-card">
+          <p className="start-kicker">Build</p>
+          <h2 className="options-title">Delete</h2>
+          <p className="start-copy">Are you sure you want to delete?</p>
+          <div className="options-actions menu-stack">
+            <button
+              type="button"
+              className="start-btn"
+              data-focus="1"
+              onClick={() => {
+                if (deleteAt(pending)) saveCurrentInventory();
+              }}
+            >
+              Yes
+            </button>
+            <button type="button" className="touch-btn" onClick={() => cancelDelete()}>
+              No
+            </button>
+          </div>
+          <p className="pad-hint">A yes · B no</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="build-tray">
       <div className="build-tray-pieces">
-        {PIECES.map((p) => (
+        {PIECES.map((p, i) => (
           <button
             key={p.id}
             type="button"
             className="build-piece"
-            data-on={selected === p.id ? "1" : "0"}
+            data-on={!deleting && selected === p.id ? "1" : "0"}
+            data-focus={focus === i ? "1" : "0"}
             onClick={() => setPiece(p.id)}
           >
             <PieceGlyph id={p.id} />
             <span>{p.label}</span>
           </button>
         ))}
+        <button
+          type="button"
+          className="build-piece"
+          data-on={deleting ? "1" : "0"}
+          data-focus={focus === TRAY_DELETE ? "1" : "0"}
+          onClick={() => setTrayFocus(TRAY_DELETE)}
+        >
+          <svg className="build-glyph" viewBox="0 0 48 32" aria-hidden="true">
+            <path d="M12 16 H36" stroke="currentColor" strokeWidth="2.6" />
+            <rect x="16" y="8" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" />
+          </svg>
+          <span>Delete</span>
+        </button>
+        <button
+          type="button"
+          className="build-done"
+          data-focus={focus === TRAY_DONE ? "1" : "0"}
+          onClick={() => setBuildMode(false)}
+        >
+          Done
+        </button>
       </div>
-      <button
-        type="button"
-        className="build-done"
-        onClick={() => setBuildMode(false)}
-      >
-        Done
-      </button>
     </div>
   );
 }
@@ -1652,7 +1718,7 @@ export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | nul
               </button>
             </div>
           </div>
-          {gameState.buildMode ? <BuildTray /> : null}
+          {gameState.buildMode ? <BuildTray nav={nav} /> : null}
           <div className="hud-bottom">
             <div className="hud-chip">
               <span className="hud-label">Stance</span>
