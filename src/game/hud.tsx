@@ -1036,13 +1036,19 @@ function Roster({
                 <button
                   type="button"
                   className="player-pick"
-                  data-focus={focus === i ? "1" : "0"}
+                  data-focus={focus === i * 2 ? "1" : "0"}
                   onClick={() => onPlay(p)}
                 >
                   <span className="player-name">{p.name}</span>
                   <span className="player-look">{lookLabel(p.look)}</span>
                 </button>
-                <button type="button" className="player-x" onClick={() => onDelete(p.id)} aria-label={`Remove ${p.name}`}>
+                <button
+                  type="button"
+                  className="player-x"
+                  data-focus={focus === i * 2 + 1 ? "1" : "0"}
+                  onClick={() => onDelete(p.id)}
+                  aria-label={`Remove ${p.name}`}
+                >
                   Remove
                 </button>
               </li>
@@ -1050,11 +1056,11 @@ function Roster({
           </ul>
         )}
         <div className="options-actions">
-          <button type="button" className="start-btn" data-focus={focus === players.length ? "1" : "0"} onClick={onNew}>
+          <button type="button" className="start-btn" data-focus={focus === players.length * 2 ? "1" : "0"} onClick={onNew}>
             New player
           </button>
         </div>
-        <p className="pad-hint">Xbox: D-pad move · A select · B back · Menu options</p>
+        <p className="pad-hint">Xbox: D-pad move · right for Remove · A select · Menu options</p>
       </div>
     </div>
   );
@@ -1258,6 +1264,7 @@ export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | nul
   focusRef.current = focus;
   const startRef = useRef<(p: PlayerProfile) => void>(() => {});
   const newRef = useRef<() => void>(() => {});
+  const dropRef = useRef<(id: string) => void>(() => {});
 
   useEffect(() => {
     initInput();
@@ -1280,16 +1287,31 @@ export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | nul
           const list = playersRef.current;
           let i = focusRef.current;
           if (scr === "roster") {
-            const count = list.length + 1;
-            if (n.down || n.right) i = (i + 1) % count;
-            if (n.up || n.left) i = (i - 1 + count) % count;
+            const nPlayers = list.length;
+            const count = nPlayers * 2 + 1;
+            if (n.down) {
+              if (i >= nPlayers * 2) i = 0;
+              else if (Math.floor(i / 2) + 1 < nPlayers) i = (Math.floor(i / 2) + 1) * 2 + (i % 2);
+              else i = nPlayers * 2;
+            }
+            if (n.up) {
+              if (i >= nPlayers * 2) i = nPlayers === 0 ? 0 : (nPlayers - 1) * 2;
+              else if (i < 2) i = count - 1;
+              else i -= 2;
+            }
+            if (n.right && i < nPlayers * 2 && i % 2 === 0) i += 1;
+            if (n.left && i < nPlayers * 2 && i % 2 === 1) i -= 1;
             if (i !== focusRef.current) {
               focusRef.current = i;
               setFocus(i);
             }
             if (n.ok) {
-              if (i < list.length) startRef.current(list[i]!);
-              else newRef.current();
+              if (i >= nPlayers * 2) newRef.current();
+              else if (i % 2 === 0) startRef.current(list[i / 2]!);
+              else {
+                const gone = list[Math.floor(i / 2)];
+                if (gone) dropRef.current(gone.id);
+              }
             }
           }
           setNav(n);
@@ -1381,7 +1403,13 @@ export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | nul
     const next = players.filter((p) => p.id !== id);
     setPlayers(next);
     savePlayers(next);
+    const max = next.length * 2;
+    if (focusRef.current > max) {
+      focusRef.current = Math.max(0, max);
+      setFocus(focusRef.current);
+    }
   };
+  dropRef.current = dropPlayer;
 
   const toRoster = () => {
     setPlayers(loadPlayers());
