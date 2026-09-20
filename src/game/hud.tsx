@@ -407,7 +407,7 @@ function InventoryPanel({
     if (!from) return;
     if (from.kind === "inv") {
       if (moveInvToEquip(gameState.inventory, gameState.equipment, from.i, slot)) {
-        if (slot === "weapon" || slot === "weapon2" || slot === "tool") gameState.hands = slot;
+        if (slot === "weapon" || slot === "weapon2") gameState.hands = slot;
         persistGear();
         setHeld(null);
         refresh();
@@ -1721,7 +1721,7 @@ export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | nul
               <span className="hud-value tabular">{gameState.hits}</span>
             </div>
             <div className="hud-chip">
-              <span className="hud-label">{gameState.hands === "none" ? "Hands" : gameState.hands === "tool" ? "Tool" : "Gun"}</span>
+              <span className="hud-label">{gameState.hands === "none" ? "Hands" : "Gun"}</span>
               <span className="hud-value">{gameState.weapon}</span>
             </div>
             <div className="hud-top-actions">
@@ -1746,7 +1746,7 @@ export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | nul
               </div>
             )}
             <div className="hud-ammo">
-              {gameState.hands === "none" || gameState.hands === "tool" ? (
+              {gameState.hands === "none" ? (
                 <span className="hud-ammo-mag">—</span>
               ) : (
                 <>

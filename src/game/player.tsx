@@ -8,7 +8,7 @@ import { clone as cloneSkinned } from "three/addons/utils/SkeletonUtils.js";
 import { consumeLook, edges, initInput, mouse, sampleActions, setForcedKeys, settings } from "./input";
 import { gameState } from "./state";
 import { playChop, playEmpty, playGunshot, playImpact, playSwoosh, playTreeFall } from "./audio";
-import { collectStone, collectStrand, collectWood, type Hands } from "./inventory";
+import { collectStone, collectStrand, collectWood } from "./inventory";
 import { saveCurrentInventory } from "./profiles";
 import { resolveCircle } from "./world-data";
 import { bumpBuild, cycleTray, nudgeCursor, pickBuilding, PIECES, placeCurrent, requestDelete, rotatePiece, setBuildMode, setPiece, TRAY_DELETE, TRAY_DONE } from "./build";
@@ -51,7 +51,6 @@ function heldWeaponId(): WeaponId | null {
   const eq = gameState.equipment;
   if (gameState.hands === "weapon" && eq.weapon?.id === "pistol") return "pistol";
   if (gameState.hands === "weapon2" && eq.weapon2?.id === "shotgun") return "shotgun";
-  if (gameState.hands === "tool" && eq.tool?.id === "axe") return "axe";
   return null;
 }
 
@@ -444,7 +443,7 @@ export function Player() {
       },
       getWeapon: () => gameState.weapon,
       setSlot: (i: number) => {
-        gameState.hands = i === 2 ? "tool" : i === 1 ? "weapon2" : "weapon";
+        gameState.hands = i === 1 ? "weapon2" : "weapon";
       },
       getLook: () => gameState.look,
       getDebug: () => ({
@@ -505,14 +504,12 @@ export function Player() {
     else adsBlend.current = 0;
     if (actions.weaponSlot === 0 && gameState.equipment.weapon) gameState.hands = "weapon";
     if (actions.weaponSlot === 1 && gameState.equipment.weapon2) gameState.hands = "weapon2";
-    if (actions.weaponSlot === 2 && gameState.equipment.tool) gameState.hands = "tool";
     if (!gameState.buildMode && (edges.nextWeapon || edges.prevWeapon)) {
-      const guns: Hands[] = [];
+      const guns: Array<"weapon" | "weapon2"> = [];
       if (gameState.equipment.weapon) guns.push("weapon");
       if (gameState.equipment.weapon2) guns.push("weapon2");
-      if (gameState.equipment.tool) guns.push("tool");
       if (guns.length) {
-        const i = Math.max(0, guns.indexOf(gameState.hands));
+        const i = Math.max(0, guns.indexOf(gameState.hands as "weapon" | "weapon2"));
         const n = edges.nextWeapon ? 1 : guns.length - 1;
         gameState.hands = guns[(i + n) % guns.length]!;
       }
@@ -758,7 +755,7 @@ export function Player() {
     }
     if (edges.fire && !gameState.buildMode && reloadT.current <= 0) {
       if (!def || def.melee) {
-        /* axe: no dry-fire click while lining up */
+        playEmpty();
       } else if (ammo.current <= 0) playEmpty();
       else if (fireCd.current <= 0) {
         ammo.current -= 1;

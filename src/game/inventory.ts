@@ -6,7 +6,7 @@ export type EquipSlotId = "weapon" | "weapon2" | "tool" | "head" | "body" | "arm
 
 export type Equipment = Record<EquipSlotId, InvSlot>;
 
-export type Hands = "weapon" | "weapon2" | "tool" | "none";
+export type Hands = "weapon" | "weapon2" | "none";
 
 export const INV_SIZE = 12;
 export const CRATE_SIZE = 12;
@@ -236,9 +236,7 @@ export function moveBetween(a: InvSlot[], ai: number, b: InvSlot[], bi: number) 
 export function syncHands(eq: Equipment, hands: Hands): Hands {
   if (hands === "weapon" && eq.weapon) return "weapon";
   if (hands === "weapon2" && eq.weapon2) return "weapon2";
-  if (hands === "tool" && eq.tool) return "tool";
   if (eq.weapon) return "weapon";
   if (eq.weapon2) return "weapon2";
-  if (eq.tool) return "tool";
   return "none";
 }
