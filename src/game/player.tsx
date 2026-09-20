@@ -922,7 +922,7 @@ export function Player() {
     const axeReady = gameState.equipment.tool?.id === "axe";
     const tree = axeReady ? nearestToolTarget(scene, pos.current, fwd.current, "axe", TREE_CHOP_RANGE) : null;
     gameState.prompt = stash
-      ? "Open crate"
+      ? "Open chest"
       : pickable?.userData.kind === "stone"
         ? "Pick stone"
         : pickable

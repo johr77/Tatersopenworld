@@ -33,6 +33,11 @@ export const EQUIP_SLOTS: { id: EquipSlotId; label: string }[] = [
   { id: "extra", label: "Extra" },
 ];
 
+export const HAND_SLOTS = EQUIP_SLOTS.filter(
+  (s): s is { id: "weapon" | "weapon2" | "tool"; label: string } =>
+    s.id === "weapon" || s.id === "weapon2" || s.id === "tool",
+);
+
 export const EQUIP_ACCEPT: Record<EquipSlotId, ItemId[]> = {
   weapon: ["pistol"],
   weapon2: ["shotgun"],
@@ -156,6 +161,10 @@ export function collectStone(inv: InvSlot[], count = 1) {
   return addItem(inv, "stone", count);
 }
 
+export function isStackable(id: ItemId) {
+  return !UNIQUE.includes(id);
+}
+
 export function canFit(slot: EquipSlotId, item: InvSlot) {
   return Boolean(item && EQUIP_ACCEPT[slot].includes(item.id));
 }
@@ -186,21 +195,27 @@ export function moveEquipToInv(inv: InvSlot[], eq: Equipment, slot: EquipSlotId,
   return false;
 }
 
-export function moveInvToInv(inv: InvSlot[], from: number, to: number) {
-  if (from === to) return true;
-  const a = inv[from];
-  const b = inv[to];
-  inv[from] = cloneSlot(b);
-  inv[to] = cloneSlot(a);
+export function mergeOrMove(a: InvSlot[], ai: number, b: InvSlot[], bi: number) {
+  if (a === b && ai === bi) return true;
+  const from = a[ai];
+  const to = b[bi];
+  if (!from) return false;
+  if (to && from.id === to.id && isStackable(from.id)) {
+    to.count += from.count;
+    a[ai] = null;
+    return true;
+  }
+  a[ai] = cloneSlot(to);
+  b[bi] = cloneSlot(from);
   return true;
 }
 
+export function moveInvToInv(inv: InvSlot[], from: number, to: number) {
+  return mergeOrMove(inv, from, inv, to);
+}
+
 export function moveBetween(a: InvSlot[], ai: number, b: InvSlot[], bi: number) {
-  const x = a[ai];
-  const y = b[bi];
-  a[ai] = cloneSlot(y);
-  b[bi] = cloneSlot(x);
-  return true;
+  return mergeOrMove(a, ai, b, bi);
 }
 
 export function syncHands(eq: Equipment, hands: Hands): Hands {

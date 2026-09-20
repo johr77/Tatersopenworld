@@ -35,6 +35,7 @@ import {
 } from "./profiles";
 import {
   EQUIP_SLOTS,
+  HAND_SLOTS,
   INV_SIZE,
   ITEM_LABEL,
   canFit,
@@ -232,16 +233,17 @@ function ItemGlyph({ id }: { id: NonNullable<InvSlot>["id"] }) {
 
 function SlotFace({ slot }: { slot: InvSlot }) {
   if (!slot) return <span className="inv-empty">Empty</span>;
+  const showCount = slot.count > 1 || slot.id === "wood" || slot.id === "strand" || slot.id === "stone";
   return (
     <>
-      {slot.count > 1 ? <span className="inv-count tabular">{slot.count}</span> : null}
+      {showCount ? <span className="inv-count tabular">{slot.count}</span> : null}
       <ItemGlyph id={slot.id} />
       <span className="inv-name">{ITEM_LABEL[slot.id]}</span>
     </>
   );
 }
 
-const KIT_COUNT = EQUIP_SLOTS.length;
+const KIT_COUNT = HAND_SLOTS.length;
 const INV_COLS = 3;
 const INV_BACK = KIT_COUNT + INV_SIZE;
 
@@ -298,6 +300,7 @@ function InventoryPanel({
       }
       return;
     }
+    if (from.kind !== "eq") return;
     if (from.id === slot) {
       setHeld(null);
       return;
@@ -390,12 +393,10 @@ function InventoryPanel({
         return;
       }
       if (at < KIT_COUNT) {
-        if (n.up) setFocus(at === 0 ? INV_BACK : at - 1);
-        else if (n.down) setFocus(at === KIT_COUNT - 1 ? INV_BACK : at + 1);
-        else if (n.right) {
-          const row = at <= 1 ? 0 : 1;
-          setFocus(KIT_COUNT + Math.min(INV_SIZE - 1, row * INV_COLS));
-        }
+        if (n.left) setFocus(at > 0 ? at - 1 : 0);
+        else if (n.right) setFocus(at < KIT_COUNT - 1 ? at + 1 : KIT_COUNT);
+        else if (n.down) setFocus(KIT_COUNT + Math.min(at, INV_COLS - 1));
+        else if (n.up) setFocus(INV_BACK);
         return;
       }
       if (at < INV_BACK) {
@@ -409,7 +410,7 @@ function InventoryPanel({
           if (c < INV_COLS - 1 && i + 1 < INV_SIZE) setFocus(at + 1);
         } else if (n.up) {
           if (r > 0) setFocus(KIT_COUNT + (r - 1) * INV_COLS + c);
-          else setFocus(0);
+          else setFocus(Math.min(KIT_COUNT - 1, c));
         } else if (n.down) {
           const ni = (r + 1) * INV_COLS + c;
           if (ni < INV_SIZE) setFocus(KIT_COUNT + ni);
@@ -450,7 +451,7 @@ function InventoryPanel({
       return;
     }
     if (at < KIT_COUNT) {
-      const id = EQUIP_SLOTS[at]!.id;
+      const id = HAND_SLOTS[at]!.id;
       if (carry) dropOnEq(id, carry);
       else if (gameState.equipment[id]) {
         const empty = firstEmptyPocket();
@@ -477,15 +478,17 @@ function InventoryPanel({
     <div className="start-overlay options-overlay" onClick={(e) => { if (e.target === e.currentTarget) onBack(); }}>
       <div className="start-card options-card inv-card" ref={cardRef}>
         <p className="start-kicker">{gameState.playerName || "Player"}</p>
-        <h2 className="options-title">{crateMode ? "Crate" : "Inventory"}</h2>
+        <h2 className="options-title">{crateMode ? "Chest" : "Inventory"}</h2>
         <p className="start-copy">
           {crateMode
-            ? "Move items between the crate and your pockets. A pick up / place · drag works too."
-            : "A equips pistol, shotgun, or axe into the matching kit slot. Mouse can still drag."}
+            ? "Chest on the left, backpack on the right. Drop the same item on another to stack."
+            : "Your pack. Drop the same item on another to stack. A equips pistol, shotgun, or axe."}
         </p>
-        <div className={`inv-layout${crateMode ? " crate-layout" : ""}`}>
+        <div className={`inv-layout${crateMode ? " crate-layout" : " inv-pack"}`}>
           {crateMode ? (
-            <div className="inv-grid crate-grid">
+            <div className="inv-pane">
+              <h3 className="inv-pane-title">Chest</h3>
+              <div className="inv-grid crate-grid">
               {gameState.crate.map((slot, i) => (
                 <div
                   key={`c-${i}`}
@@ -510,10 +513,13 @@ function InventoryPanel({
                   <SlotFace slot={slot} />
                 </div>
               ))}
+              </div>
             </div>
           ) : (
-          <div className="kit-col">
-            {EQUIP_SLOTS.map((row, i) => {
+          <div className="inv-pane">
+            <h3 className="inv-pane-title">Equipped</h3>
+            <div className="hand-row">
+            {HAND_SLOTS.map((row, i) => {
               const slot = gameState.equipment[row.id];
               return (
                 <div
@@ -542,9 +548,12 @@ function InventoryPanel({
                 </div>
               );
             })}
+            </div>
           </div>
           )}
-          <div className="inv-grid">
+          <div className="inv-pane">
+            <h3 className="inv-pane-title">Backpack</h3>
+            <div className="inv-grid">
             {gameState.inventory.map((slot, i) => (
               <div
                 key={i}
@@ -570,9 +579,10 @@ function InventoryPanel({
                 <SlotFace slot={slot} />
               </div>
             ))}
+            </div>
           </div>
         </div>
-        <p className="pad-hint">Pad: D-pad moves the grid · A equip / unequip · B back</p>
+        <p className="pad-hint">Pad: D-pad moves · A pick up / place / equip · B back</p>
         <div className="options-actions">
           <button type="button" className="start-btn" data-focus={focus === (crateMode ? CRATE_SIZE + INV_SIZE : INV_BACK) ? "1" : "0"} onClick={onBack}>
             Back
@@ -925,7 +935,7 @@ function Roster({
       <div className="lobby-panel">
         <p className="start-kicker">Taters range</p>
         <h1 className="start-title">Players</h1>
-        <p className="start-copy">Make a shooter, then pick them to play. Kit is in Inventory.</p>
+        <p className="start-copy">Make a shooter, then pick them to play.</p>
         {players.length === 0 ? (
           <p className="empty-note">No one yet. Make a player to start.</p>
         ) : (
@@ -1429,7 +1439,7 @@ export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | nul
               <span className="hud-value tabular">{gameState.hits}</span>
             </div>
             <div className="hud-chip">
-              <span className="hud-label">{gameState.hands === "tool" ? "Tool" : gameState.hands === "weapon" ? "Gun" : "Hands"}</span>
+              <span className="hud-label">{gameState.hands === "none" ? "Hands" : "Gun"}</span>
               <span className="hud-value">{gameState.weapon}</span>
             </div>
             <div className="hud-top-actions">
@@ -1455,8 +1465,6 @@ export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | nul
             <div className="hud-ammo">
               {gameState.hands === "none" ? (
                 <span className="hud-ammo-mag">—</span>
-              ) : gameState.hands === "tool" ? (
-                <span className="hud-ammo-mag">AXE</span>
               ) : (
                 <>
                   <span className="hud-ammo-mag tabular">
