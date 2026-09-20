@@ -51,6 +51,7 @@ function heldWeaponId(): WeaponId | null {
   const eq = gameState.equipment;
   if (gameState.hands === "weapon" && eq.weapon?.id === "pistol") return "pistol";
   if (gameState.hands === "weapon2" && eq.weapon2?.id === "shotgun") return "shotgun";
+  if (gameState.hands === "tool" && eq.tool?.id === "axe") return "axe";
   return null;
 }
 
@@ -443,7 +444,7 @@ export function Player() {
       },
       getWeapon: () => gameState.weapon,
       setSlot: (i: number) => {
-        gameState.hands = i === 1 ? "weapon2" : "weapon";
+        gameState.hands = i === 2 ? "tool" : i === 1 ? "weapon2" : "weapon";
       },
       getLook: () => gameState.look,
       getDebug: () => ({
@@ -504,12 +505,14 @@ export function Player() {
     else adsBlend.current = 0;
     if (actions.weaponSlot === 0 && gameState.equipment.weapon) gameState.hands = "weapon";
     if (actions.weaponSlot === 1 && gameState.equipment.weapon2) gameState.hands = "weapon2";
+    if (actions.weaponSlot === 2 && gameState.equipment.tool) gameState.hands = "tool";
     if (!gameState.buildMode && (edges.nextWeapon || edges.prevWeapon)) {
-      const guns: Array<"weapon" | "weapon2"> = [];
+      const guns: Hands[] = [];
       if (gameState.equipment.weapon) guns.push("weapon");
       if (gameState.equipment.weapon2) guns.push("weapon2");
+      if (gameState.equipment.tool) guns.push("tool");
       if (guns.length) {
-        const i = Math.max(0, guns.indexOf(gameState.hands as "weapon" | "weapon2"));
+        const i = Math.max(0, guns.indexOf(gameState.hands));
         const n = edges.nextWeapon ? 1 : guns.length - 1;
         gameState.hands = guns[(i + n) % guns.length]!;
       }
@@ -755,7 +758,7 @@ export function Player() {
     }
     if (edges.fire && !gameState.buildMode && reloadT.current <= 0) {
       if (!def || def.melee) {
-        playEmpty();
+        /* axe: no dry-fire click while lining up */
       } else if (ammo.current <= 0) playEmpty();
       else if (fireCd.current <= 0) {
         ammo.current -= 1;
