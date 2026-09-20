@@ -34,7 +34,7 @@ export type WeaponDef = {
 export const WEAPONS: WeaponDef[] = [
   { id: "pistol", name: "Pistol", mag: 12, reserve: 36, fireCd: 0.15, reload: 1.35, recoil: 0.038, length: 0.26, gripBack: 0.055, drop: 0.012, hold: [-0.034, 0.100, 0.036], holdRot: [Math.PI / 2, -0.18, 0], adsBack: 0.4, adsUp: 0.07, obj: "/models/weapon/quaternius/Pistol_1.obj", mtl: "/models/weapon/quaternius/Pistol_1.mtl" },
   { id: "shotgun", name: "Shotgun", mag: 6, reserve: 24, fireCd: 0.55, reload: 2.4, recoil: 0.07, length: 0.72, gripBack: 0.27, drop: 0.016, hold: [-0.035, 0.16, 0.055], holdRot: [Math.PI / 2, -0.18, 0], adsBack: 0.3, adsUp: 0.05, obj: "/models/weapon/quaternius/Shotgun_1.obj", mtl: "/models/weapon/quaternius/Shotgun_1.mtl" },
-  { id: "axe", name: "Primitive Axe", mag: 0, reserve: 0, fireCd: 0.95, reload: 0, recoil: 0.02, length: 0.7, gripBack: 0.2, drop: 0.02, hold: [-0.1, 0.24, 0.03], holdRot: [Math.PI / 2, 3.5, 0.15], adsBack: 0.12, adsUp: 0.02, melee: true, tool: true, obj: "/models/tools/Primitiveaxe.glb", mtl: "" },
+  { id: "axe", name: "Primitive Axe", mag: 0, reserve: 0, fireCd: 0.95, reload: 0, recoil: 0.02, length: 0.7, gripBack: 0.2, drop: 0.02, hold: [-0.02, 0.09, 0.03], holdRot: [Math.PI / 2, 2.0, 0.15], adsBack: 0.12, adsUp: 0.02, melee: true, tool: true, obj: "/models/tools/Primitiveaxe.glb", mtl: "" },
 ];
 
 function fallbackGun(length: number) {
