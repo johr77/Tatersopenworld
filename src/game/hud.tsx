@@ -1064,9 +1064,12 @@ function BuildTray({ nav }: { nav: MenuNav | null }) {
       if (n.up || n.left) gameState.buildConfirm = 0;
       if (n.down || n.right) gameState.buildConfirm = 1;
       if (n.ok) {
-        if (gameState.buildConfirm === 0) {
+        if (gameState.buildConfirmLock) gameState.buildConfirmLock = false;
+        else if (gameState.buildConfirm === 0) {
           if (deleteAt(pending)) saveCurrentInventory();
         } else cancelDelete();
+      } else {
+        gameState.buildConfirmLock = false;
       }
       if (n.back) cancelDelete();
       setBump((x) => x + 1);

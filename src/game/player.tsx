@@ -520,8 +520,10 @@ export function Player() {
       view.current = "third";
       alignCam.current = false;
       if (gameState.buildPending < 0) {
-        if (edges.nextWeapon) cycleTray(1);
-        if (edges.prevWeapon) cycleTray(-1);
+        if (actions.dpadX === 0 && actions.dpadY === 0) {
+          if (edges.nextWeapon) cycleTray(1);
+          if (edges.prevWeapon) cycleTray(-1);
+        }
         if (edges.use) rotatePiece();
         if (edges.crouch) setBuildMode(false);
         const focus = gameState.buildFocus;
@@ -637,16 +639,16 @@ export function Player() {
     camFwd.current.set(-ly, 0, -lc);
 
     if (building && gameState.buildPending < 0) {
-      const mx = actions.moveX;
-      const my = actions.moveY;
-      if (Math.hypot(mx, my) > 0.45) {
+      const dx = actions.dpadX;
+      const dy = actions.dpadY;
+      if (dx || dy) {
         buildHold.current -= dt;
         if (buildHold.current <= 0) {
-          const wx = camFwd.current.x * my + lc * mx;
-          const wz = camFwd.current.z * my - ly * mx;
+          const wx = camFwd.current.x * dy + lc * dx;
+          const wz = camFwd.current.z * dy - ly * dx;
           if (Math.abs(wx) >= Math.abs(wz)) nudgeCursor(Math.sign(wx), 0);
           else nudgeCursor(0, Math.sign(wz));
-          buildHold.current = 0.16;
+          buildHold.current = 0.18;
         }
       } else {
         buildHold.current = 0;
@@ -660,11 +662,27 @@ export function Player() {
         ? SPRINT_SPEED
         : WALK_SPEED;
 
-    wish.current.copy(fwd.current).multiplyScalar(actions.moveY).addScaledVector(right.current, actions.moveX);
-    if (inspecting || building || pickHold.current > 0 || chopHold.current > 0) wish.current.set(0, 0, 0);
+    if (building) {
+      wish.current.set(
+        camFwd.current.x * actions.moveY + lc * actions.moveX,
+        0,
+        camFwd.current.z * actions.moveY - ly * actions.moveX,
+      );
+    } else {
+      wish.current.copy(fwd.current).multiplyScalar(actions.moveY).addScaledVector(right.current, actions.moveX);
+    }
+    if (inspecting || pickHold.current > 0 || chopHold.current > 0 || (building && gameState.buildPending >= 0)) {
+      wish.current.set(0, 0, 0);
+    }
     if (wish.current.lengthSq() > 1) wish.current.normalize();
 
-    if (inspecting || building || pickHold.current > 0 || chopHold.current > 0) {
+    if (building && wish.current.lengthSq() > 0.0001) {
+      const keepLook = yaw.current + orbitYaw.current;
+      yaw.current = Math.atan2(-wish.current.x, -wish.current.z);
+      orbitYaw.current = keepLook - yaw.current;
+    }
+
+    if (inspecting || pickHold.current > 0 || chopHold.current > 0 || (building && gameState.buildPending >= 0)) {
       vel.current.x = 0;
       vel.current.z = 0;
     }
@@ -986,10 +1004,10 @@ export function Player() {
     const tree = axeReady ? nearestToolTarget(scene, pos.current, fwd.current, "axe", TREE_CHOP_RANGE) : null;
     gameState.prompt = gameState.buildMode
       ? gameState.buildPending >= 0
-        ? "A yes · B no"
+        ? "D-pad Yes/No · A confirm · B back"
         : gameState.buildTool === "delete"
           ? "Look at a piece · A delete · B exit"
-          : "Left stick move piece · A place · X rotate · B exit"
+          : "D-pad piece · left stick walk · A place · X rotate · B exit"
       : stash
       ? "Open chest"
       : pickable?.userData.kind === "stone"

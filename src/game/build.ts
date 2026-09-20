@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { gameState } from "./state";
+import { suppressNav } from "./input";
 import type { BuildKind, BuildPlace } from "./world-data";
 
 export type PieceId = "wall" | "door" | "floor" | "corner";
@@ -166,6 +167,8 @@ export function requestDelete(index: number) {
   gameState.buildPending = index;
   gameState.buildHover = index;
   gameState.buildConfirm = 0;
+  gameState.buildConfirmLock = true;
+  suppressNav(0);
   bump();
 }
 

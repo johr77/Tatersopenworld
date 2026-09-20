@@ -182,6 +182,12 @@ let rebindKind: "key" | "button" | "any" = "any";
 let onRebind: ((label: string) => void) | null = null;
 const rebindHeld = new Set<number>();
 const navSuppress = new Set<number>();
+
+export function suppressNav(btn: number) {
+  navSuppress.add(btn);
+  if (btn === 0) menuPrev.ok = true;
+  if (btn === 1) menuPrev.back = true;
+}
 let rebindArm = 0;
 let wheelDir = 0;
 
@@ -438,6 +444,8 @@ export type Actions = {
   lookStickX: number;
   lookStickY: number;
   padActive: boolean;
+  dpadX: number;
+  dpadY: number;
 };
 
 const prev = {
@@ -542,6 +550,18 @@ export function sampleActions(): Actions {
   const prevHeld = !blocked && (actionDown("prevWeapon", pad) || wheelDir < 0);
   wheelDir = 0;
 
+  let dpadX = 0;
+  let dpadY = 0;
+  if (!blocked && pad) {
+    const b = pad.buttons;
+    const ax = pad.axes[6] ?? 0;
+    const ay = pad.axes[7] ?? 0;
+    if (b[12]?.pressed || ay < -0.5) dpadY += 1;
+    if (b[13]?.pressed || ay > 0.5) dpadY -= 1;
+    if (b[14]?.pressed || ax < -0.5) dpadX -= 1;
+    if (b[15]?.pressed || ax > 0.5) dpadX += 1;
+  }
+
   edges.jump = jump && !prev.jump;
   edges.fire = fire && !prev.fire;
   edges.reload = reload && !prev.reload;
@@ -583,6 +603,8 @@ export function sampleActions(): Actions {
     lookStickX: blocked ? 0 : lookX,
     lookStickY: blocked ? 0 : lookY,
     padActive: Boolean(pad),
+    dpadX,
+    dpadY,
   };
 }
 

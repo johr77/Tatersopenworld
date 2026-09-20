@@ -28,6 +28,7 @@ export const gameState = {
   buildX: 0,
   buildZ: 0,
   buildConfirm: 0,
+  buildConfirmLock: false,
   hands: "none" as Hands,
   playerId: "",
   playerName: "",
