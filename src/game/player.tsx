@@ -8,7 +8,7 @@ import { clone as cloneSkinned } from "three/addons/utils/SkeletonUtils.js";
 import { consumeLook, edges, initInput, mouse, sampleActions, setForcedKeys, settings } from "./input";
 import { gameState } from "./state";
 import { playChop, playEmpty, playGunshot, playImpact, playSwoosh, playTreeFall } from "./audio";
-import { collectStone, collectStrand, collectWood } from "./inventory";
+import { collectStone, collectStrand, collectWood, type Hands } from "./inventory";
 import { saveCurrentInventory } from "./profiles";
 import { resolveCircle } from "./world-data";
 import { bumpBuild, cycleTray, nudgeCursor, pickBuilding, PIECES, placeCurrent, requestDelete, rotatePiece, setBuildMode, setPiece, TRAY_DELETE, TRAY_DONE } from "./build";
