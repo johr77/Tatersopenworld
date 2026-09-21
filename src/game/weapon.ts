@@ -3,7 +3,7 @@ import { MTLLoader } from "three/addons/loaders/MTLLoader.js";
 import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
 import * as THREE from "three";
 
-export type WeaponId = "pistol" | "shotgun" | "axe";
+export type WeaponId = "pistol" | "shotgun" | "axe" | "club" | "stick";
 
 export type WeaponDef = {
   id: WeaponId;
@@ -35,6 +35,8 @@ export const WEAPONS: WeaponDef[] = [
   { id: "pistol", name: "Pistol", mag: 12, reserve: 36, fireCd: 0.15, reload: 1.35, recoil: 0.038, length: 0.26, gripBack: 0.055, drop: 0.012, hold: [-0.034, 0.100, 0.036], holdRot: [Math.PI / 2, -0.18, 0], adsBack: 0.4, adsUp: 0.07, obj: "/models/weapon/quaternius/Pistol_1.obj", mtl: "/models/weapon/quaternius/Pistol_1.mtl" },
   { id: "shotgun", name: "Shotgun", mag: 6, reserve: 24, fireCd: 0.55, reload: 2.4, recoil: 0.07, length: 0.72, gripBack: 0.27, drop: 0.016, hold: [-0.035, 0.16, 0.055], holdRot: [Math.PI / 2, -0.18, 0], adsBack: 0.3, adsUp: 0.05, obj: "/models/weapon/quaternius/Shotgun_1.obj", mtl: "/models/weapon/quaternius/Shotgun_1.mtl" },
   { id: "axe", name: "Primitive Axe", mag: 0, reserve: 0, fireCd: 0.95, reload: 0, recoil: 0.02, length: 0.7, gripBack: 0.2, drop: 0.02, hold: [-0.02, 0.09, 0.03], holdRot: [Math.PI / 2, 2.0, 0.15], adsBack: 0.12, adsUp: 0.02, melee: true, tool: true, obj: "/models/tools/Primitiveaxe.glb", mtl: "" },
+  { id: "club", name: "Primitive Club", mag: 0, reserve: 0, fireCd: 0.9, reload: 0, recoil: 0.02, length: 0.78, gripBack: 0.18, drop: 0.02, hold: [-0.02, 0.09, 0.03], holdRot: [Math.PI / 2, 2.0, 0.15], adsBack: 0.12, adsUp: 0.02, melee: true, obj: "/models/tools/Primitiveclub.glb", mtl: "" },
+  { id: "stick", name: "Primitive Stick", mag: 0, reserve: 0, fireCd: 0.7, reload: 0, recoil: 0.015, length: 0.9, gripBack: 0.16, drop: 0.02, hold: [-0.02, 0.09, 0.03], holdRot: [Math.PI / 2, 2.0, 0.15], adsBack: 0.12, adsUp: 0.02, melee: true, obj: "/models/tools/Primitivestick.glb", mtl: "" },
 ];
 
 function fallbackGun(length: number) {
@@ -144,9 +146,9 @@ function loadGun(def: WeaponDef): Promise<THREE.Object3D> {
 const templates: Partial<Record<WeaponId, THREE.Object3D>> = {};
 const loading: Partial<Record<WeaponId, Promise<THREE.Object3D>>> = {};
 
-function loadAxe(def: WeaponDef): Promise<THREE.Object3D> {
+function loadMelee(def: WeaponDef): Promise<THREE.Object3D> {
   const wrap = new THREE.Group();
-  wrap.name = "axe";
+  wrap.name = def.id;
   return new Promise((resolve) => {
     const loader = new GLTFLoader();
     loader.load(
@@ -166,7 +168,7 @@ function loadAxe(def: WeaponDef): Promise<THREE.Object3D> {
             if (mat.map) mat.map.colorSpace = THREE.SRGBColorSpace;
           }
         });
-        // Primitiveaxe: origin at the butt, handle +Y, blade +X. Sit the grip at wrap origin.
+        // Primitive tools: origin at the butt, handle +Y. Sit the grip at wrap origin.
         obj.position.set(0, -def.gripBack, 0);
         wrap.add(obj);
         resolve(wrap);
@@ -177,11 +179,15 @@ function loadAxe(def: WeaponDef): Promise<THREE.Object3D> {
   });
 }
 
+export function isWeaponId(id: string | null | undefined): id is WeaponId {
+  return Boolean(id && WEAPONS.some((w) => w.id === id));
+}
+
 function getGun(def: WeaponDef): Promise<THREE.Object3D> {
   const ready = templates[def.id];
   if (ready) return Promise.resolve(ready.clone(true));
   if (!loading[def.id]) {
-    const make = def.id === "axe" ? loadAxe(def) : loadGun(def);
+    const make = def.obj.endsWith(".glb") ? loadMelee(def) : loadGun(def);
     loading[def.id] = make.then((gun) => {
       templates[def.id] = gun;
       return gun;

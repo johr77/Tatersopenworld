@@ -1,4 +1,4 @@
-export type ItemId = "wood" | "strand" | "stone" | "pistol" | "shotgun" | "axe";
+export type ItemId = "wood" | "strand" | "stone" | "pistol" | "shotgun" | "axe" | "club" | "stick";
 
 export type InvSlot = { id: ItemId; count: number } | null;
 
@@ -20,6 +20,8 @@ export const ITEM_LABEL: Record<ItemId, string> = {
   pistol: "Pistol",
   shotgun: "Shotgun",
   axe: "Primitive Axe",
+  club: "Primitive Club",
+  stick: "Primitive Stick",
 };
 
 /** Drop replacements in public/icons using these names (png or svg). */
@@ -30,6 +32,8 @@ export const ITEM_ICON: Record<ItemId, string> = {
   pistol: "/icons/pistol.svg",
   shotgun: "/icons/shotgun.svg",
   axe: "/icons/axe.svg",
+  club: "/icons/club.svg",
+  stick: "/icons/stick.svg",
 };
 
 export const EQUIP_SLOTS: { id: EquipSlotId; label: string }[] = [
@@ -49,9 +53,11 @@ export const HAND_SLOTS = EQUIP_SLOTS.filter(
     s.id === "weapon" || s.id === "weapon2" || s.id === "tool",
 );
 
+const HAND_WEAPONS: ItemId[] = ["pistol", "shotgun", "club", "stick"];
+
 export const EQUIP_ACCEPT: Record<EquipSlotId, ItemId[]> = {
-  weapon: ["pistol"],
-  weapon2: ["shotgun"],
+  weapon: HAND_WEAPONS,
+  weapon2: HAND_WEAPONS,
   tool: ["axe"],
   head: [],
   body: [],
@@ -61,8 +67,8 @@ export const EQUIP_ACCEPT: Record<EquipSlotId, ItemId[]> = {
   extra: [],
 };
 
-const UNIQUE: ItemId[] = ["pistol", "shotgun", "axe"];
-const KNOWN: ItemId[] = ["wood", "strand", "stone", "pistol", "shotgun", "axe"];
+const UNIQUE: ItemId[] = ["pistol", "shotgun", "axe", "club", "stick"];
+const KNOWN: ItemId[] = ["wood", "strand", "stone", "pistol", "shotgun", "axe", "club", "stick"];
 
 export function emptyInventory(): InvSlot[] {
   return Array.from({ length: INV_SIZE }, () => null);
@@ -91,6 +97,8 @@ export function starterInventory(): InvSlot[] {
   inv[0] = { id: "pistol", count: 1 };
   inv[1] = { id: "axe", count: 1 };
   inv[2] = { id: "shotgun", count: 1 };
+  inv[3] = { id: "club", count: 1 };
+  inv[4] = { id: "stick", count: 1 };
   return inv;
 }
 
@@ -139,6 +147,8 @@ export function ensureStarterGear(inv: InvSlot[], eq: Equipment) {
   if (!hasItem(inv, eq, "pistol")) addItem(inv, "pistol", 1);
   if (!hasItem(inv, eq, "axe")) addItem(inv, "axe", 1);
   if (!hasItem(inv, eq, "shotgun")) addItem(inv, "shotgun", 1);
+  if (!hasItem(inv, eq, "club")) addItem(inv, "club", 1);
+  if (!hasItem(inv, eq, "stick")) addItem(inv, "stick", 1);
   if (!eq.tool) {
     const i = inv.findIndex((s) => s?.id === "axe");
     if (i >= 0) moveInvToEquip(inv, eq, i, "tool");

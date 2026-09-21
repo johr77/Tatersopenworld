@@ -606,7 +606,7 @@ function InventoryPanel({
       <p className="start-copy">
         {crateMode
           ? "Your pack. Drag onto the chest, or drop the same item on itself to stack."
-          : "Your pack. Drop the same item on another to stack. A equips pistol, shotgun, or axe."}
+          : "Your pack. Drop the same item on another to stack. Equip club or stick on Weapon 1 / 2 to hold them."}
       </p>
       {!crateMode ? (
         <div className="inv-pane">
@@ -1746,7 +1746,7 @@ export function Hud({ hostRef }: { hostRef: React.RefObject<HTMLDivElement | nul
               </div>
             )}
             <div className="hud-ammo">
-              {gameState.hands === "none" ? (
+              {gameState.hands === "none" || gameState.magSize === 0 ? (
                 <span className="hud-ammo-mag">—</span>
               ) : (
                 <>

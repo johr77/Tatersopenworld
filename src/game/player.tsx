@@ -13,7 +13,7 @@ import { saveCurrentInventory } from "./profiles";
 import { resolveCircle } from "./world-data";
 import { bumpBuild, cycleTray, nudgeCursor, pickBuilding, PIECES, placeCurrent, requestDelete, rotatePiece, setBuildMode, setPiece, TRAY_DELETE, TRAY_DONE } from "./build";
 import { nearestStash, nearestToolTarget, nearestUseTarget, TREE_CHOP_RANGE, WEED_PICK_RANGE } from "./tools";
-import { attachWeapons, WEAPONS, type WeaponHandle, type WeaponId } from "./weapon";
+import { attachWeapons, isWeaponId, WEAPONS, type WeaponHandle, type WeaponId } from "./weapon";
 import { isFemaleLook, lookDef, LOOKS, type LookId } from "./profiles";
 import { applyHairVisibility, applyHeadOnly, applyLoadout, installHeadOnly, isHairMesh, isHeadMesh, OUTFIT_FILES, wearOutfits } from "./wardrobe";
 
@@ -49,9 +49,8 @@ const _chopFrom = new THREE.Vector3();
 
 function heldWeaponId(): WeaponId | null {
   const eq = gameState.equipment;
-  if (gameState.hands === "weapon" && eq.weapon?.id === "pistol") return "pistol";
-  if (gameState.hands === "weapon2" && eq.weapon2?.id === "shotgun") return "shotgun";
-  return null;
+  const id = gameState.hands === "weapon" ? eq.weapon?.id : gameState.hands === "weapon2" ? eq.weapon2?.id : null;
+  return isWeaponId(id) ? id : null;
 }
 
 function heldDef() {
