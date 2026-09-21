@@ -274,8 +274,10 @@ function persistGear() {
 
 function matchingKit(item: InvSlot): EquipSlotId | null {
   if (!item) return null;
-  const row = EQUIP_SLOTS.find((s) => canFit(s.id, item));
-  return row?.id ?? null;
+  const fits = EQUIP_SLOTS.filter((s) => canFit(s.id, item));
+  if (!fits.length) return null;
+  const empty = fits.find((s) => !gameState.equipment[s.id]);
+  return (empty ?? fits[0]!).id;
 }
 
 function firstEmptyPocket() {

@@ -37,6 +37,7 @@ const EYE_CROUCH = 1.05;
 const SENS = 0.00205;
 const PITCH_LIM = Math.PI / 2 - 0.04;
 const PLAYER_R = 0.32;
+const MELEE_RANGE = 2.55;
 
 const _eyePos = new THREE.Vector3();
 const _adsPos = new THREE.Vector3();
@@ -752,10 +753,51 @@ export function Player() {
       reloadT.current = def.reload;
       controller.upper.play(CLIP.reload, 0.08);
     }
-    if (edges.fire && !gameState.buildMode && reloadT.current <= 0) {
-      if (!def || def.melee) {
-        playEmpty();
-      } else if (ammo.current <= 0) playEmpty();
+    if (edges.fire && !gameState.buildMode && reloadT.current <= 0 && chopHold.current <= 0 && pickHold.current <= 0) {
+      if (def?.melee) {
+        if (fireCd.current <= 0) {
+          fireCd.current = def.fireCd;
+          const clip = controller.upper.get(CLIP.chop)?.getClip();
+          chopHold.current = Math.min(0.72, clip?.duration || 0.6);
+          controller.upper.play(CLIP.chop, 0.05, true);
+          if (xz <= 0.35 && grounded.current) controller.lower.play(CLIP.chop, 0.05, true);
+          playSwoosh();
+          weapons.current?.setId(def.id);
+          const skip = (h: THREE.Intersection) => {
+            let o: THREE.Object3D | null = h.object;
+            while (o) {
+              if (o === body || o === viewmodel.current?.root) return true;
+              o = o.parent;
+            }
+            return false;
+          };
+          const knockHit = (hits: THREE.Intersection[]) => {
+            const hit = hits.find((h) => h.distance > 0.35 && h.distance <= MELEE_RANGE && !skip(h));
+            if (!hit) return false;
+            playImpact();
+            let o: THREE.Object3D | null = hit.object;
+            while (o) {
+              if (o.userData?.target) {
+                if (!o.userData.down) {
+                  gameState.hits += 1;
+                  o.userData.knock?.();
+                }
+                return true;
+              }
+              o = o.parent;
+            }
+            return true;
+          };
+          ray.current.layers.enableAll();
+          ray.current.setFromCamera(ndc.current, camera);
+          if (!knockHit(ray.current.intersectObjects(scene.children, true))) {
+            _eyePos.set(pos.current.x, pos.current.y + eye.current * 0.72, pos.current.z);
+            ray.current.set(_eyePos, fwd.current);
+            knockHit(ray.current.intersectObjects(scene.children, true));
+          }
+        }
+      } else if (!def) playEmpty();
+      else if (ammo.current <= 0) playEmpty();
       else if (fireCd.current <= 0) {
         ammo.current -= 1;
         fireCd.current = def.fireCd;
@@ -797,7 +839,7 @@ export function Player() {
 
     const moving = xz > 0.35 && grounded.current;
     const fps = view.current === "fps";
-    weapons.current?.setLowered(!aiming && shootHold.current <= 0);
+    weapons.current?.setLowered(!aiming && shootHold.current <= 0 && chopHold.current <= 0);
 
     const chopping = chopHold.current > 0;
     const picking = pickHold.current > 0;
